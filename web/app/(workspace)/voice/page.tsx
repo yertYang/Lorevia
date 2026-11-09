@@ -1,5 +1,5 @@
-import VoiceWorkspace from '@/features/voice/VoiceWorkspace'
+import { redirect } from 'next/navigation'
 
 export default function VoicePage() {
-  return <VoiceWorkspace />
+  redirect('/chat')
 }

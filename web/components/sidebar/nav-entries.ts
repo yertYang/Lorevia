@@ -3,7 +3,6 @@ import { LEARNING_HUB } from '@/lib/learning-routes'
 import {
   Bot,
   Globe,
-  Radio,
   GraduationCap,
   HeartHandshake,
   House,
@@ -90,7 +89,6 @@ export const PRIMARY_NAV: NavEntry[] = [
     defaultCollapsed: true,
   },
   { href: '/browser-testing', label: 'Browser testing', icon: Globe, defaultCollapsed: true },
-  { href: '/voice', label: 'Voice conversation', icon: Radio, defaultCollapsed: true },
 ]
 
 export const SECONDARY_NAV: NavEntry[] = [{ href: '/settings', label: 'Settings', icon: Settings }]

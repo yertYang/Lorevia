@@ -30,7 +30,6 @@ import {
   Database,
   Loader2,
   MessageSquare,
-  Mic,
   Paperclip,
   PencilRuler,
   Plug,
@@ -93,7 +92,7 @@ import type { ContextTreeItem } from "./ContextReferenceTree";
 import SelectedResources from "./SelectedResources";
 import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
 import { ComposerInput, type ComposerInputHandle } from "./ComposerInput";
-import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
+import ComposerVoiceControl, { type VoiceReply } from "@/features/voice/ComposerVoiceControl";
 import type { CapabilityDef } from "@/features/capabilities/presentation";
 import AttachmentProcessingStatus from "./AttachmentProcessingStatus";
 import { QuotedPassage } from "./QuotedPassage";
@@ -312,7 +311,9 @@ export default memo(function ChatComposer({
   showCapabilityChip = true,
   docked = false,
   trayEnd,
+  voiceConversation,
 }: {
+  voiceConversation?: { key: string; reply?: VoiceReply; onVoiceTurn: () => void };
   taskSessionId?: string | null;
   draftTaskIds?: string[];
   onDraftTaskIdsChange?: (ids: string[]) => void;
@@ -787,7 +788,6 @@ export default memo(function ChatComposer({
     const next = current.trim() ? `${current.trimEnd()} ${text}` : text;
     inputHandleRef.current?.setValue(next);
   }, []);
-  const recorder = useVoiceRecorder(handleTranscript);
 
   const handlePickFiles = useCallback(() => {
     if (isTestMode) testImporterRef.current?.pick();
@@ -1397,12 +1397,6 @@ export default memo(function ChatComposer({
             </div>
           )}
 
-          {recorder.error && (
-            <div role="alert" className="px-4 pb-2 text-[11px] text-red-600">
-              {recorder.error}
-            </div>
-          )}
-
           {/* Claude-style chrome-free toolbar: no divider against the input
               area, no pill borders — quiet text/icon buttons that surface
               on hover. */}
@@ -1594,36 +1588,18 @@ export default memo(function ChatComposer({
 
                 {contextBudget ? <ContextBudgetChip budget={contextBudget} /> : null}
 
-                {(controls?.voice !== false || recorder.state !== "idle") && <Tooltip
-                  label={recorder.state === "recording" ? t("Stop recording") : t("Record voice")}
-                  description={recorder.error || undefined}
-                  side="top"
-                >
-                  <button
-                    type="button"
-                    onClick={recorder.toggle}
-                    disabled={recorder.state === "transcribing" || recorder.state === "checking" || isStreaming}
-                    className={`group relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] transition-[background-color,color,transform] duration-150 active:scale-90 disabled:opacity-40 ${
-                      recorder.state === "recording"
-                        ? "bg-red-500/15 text-red-500"
-                        : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
-                    }`}
-                    aria-label={recorder.state === "recording" ? t("Stop recording") : t("Record voice")}
-                  >
-                    {recorder.state === "recording" && (
-                      <span className="pointer-events-none absolute inset-0 rounded-[10px] border border-red-500/40 animate-pulse" />
-                    )}
-                    {recorder.state === "transcribing" || recorder.state === "checking" ? (
-                      <Loader2
-                        size={16}
-                        strokeWidth={1.9}
-                        className="animate-spin"
-                      />
-                    ) : (
-                      <Mic size={16} strokeWidth={1.9} />
-                    )}
-                  </button>
-                </Tooltip>}
+                <ComposerVoiceControl
+                  visible={controls?.voice !== false}
+                  busy={isStreaming && !awaitingUserReply}
+                  conversationKey={voiceConversation?.key}
+                  reply={voiceConversation?.reply}
+                  onVoiceTurn={voiceConversation?.onVoiceTurn}
+                  onTranscript={handleTranscript}
+                  onSend={voiceConversation ? (text) => {
+                    const current = inputHandleRef.current?.getValue() || "";
+                    return doSend(current.trim() ? `${current.trimEnd()} ${text}` : text);
+                  } : undefined}
+                />
 
                 {/* The thing you press is the thing that's working is the
                     thing you press to stop — one element for the whole turn,

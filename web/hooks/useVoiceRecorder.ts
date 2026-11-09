@@ -11,8 +11,8 @@ export type RecorderState = "idle" | "checking" | "recording" | "transcribing";
 
 /**
  * Microphone capture → backend transcription. Records via MediaRecorder, posts
- * the clip to ``/api/voice/stt`` (which uses the admin-configured STT
- * provider), and hands the transcript back through ``onTranscript``.
+ * the clip to ``/api/voice/stt`` (which uses the selected STT model or server
+ * default), and hands the transcript back through ``onTranscript``.
  */
 export function useVoiceRecorder(onTranscript: (text: string) => void) {
   const { t } = useTranslation();
@@ -21,6 +21,7 @@ export function useVoiceRecorder(onTranscript: (text: string) => void) {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const requestRef = useRef<AbortController | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onTranscriptRef = useRef(onTranscript);
   onTranscriptRef.current = onTranscript;
 
@@ -46,34 +47,17 @@ export function useVoiceRecorder(onTranscript: (text: string) => void) {
     const url = apiUrl("/api/voice/stt");
     setState("checking");
     try {
-      const { catalog } = await requestJson<{
-        catalog: {
-          services: {
-            stt?: {
-              active_profile_id?: string;
-              active_model_id?: string;
-              profiles: {
-                id: string;
-                models: { id: string; model: string }[];
-              }[];
-            };
-          };
-        };
-      }>(apiUrl("/api/settings/catalog"), {
+      const { stt } = await requestJson<{
+        stt: { configured: boolean; message?: string };
+      }>(apiUrl("/api/voice/status"), {
         signal: AbortSignal.any([
           controller.signal,
           AbortSignal.timeout(15000),
         ]),
       });
-      const stt = catalog.services.stt;
-      const profile = stt?.profiles.find((p) => p.id === stt.active_profile_id);
-      if (
-        !profile?.models.some(
-          (m) => m.id === stt?.active_model_id && m.model.trim(),
-        )
-      ) {
+      if (!stt.configured) {
         throw new Error(
-          "Choose a speech-to-text model in Settings → Voice and set it as default before recording.",
+          stt.message || "Choose a speech-to-text model in Settings → Voice and set it as default before recording.",
         );
       }
     } catch (err) {
@@ -117,10 +101,28 @@ export function useVoiceRecorder(onTranscript: (text: string) => void) {
       return;
     }
     const chunks: Blob[] = [];
+    let bytes = 0;
+    let recordingTimer: ReturnType<typeof setTimeout> | null = null;
+    const clearRecordingTimer = () => {
+      if (recordingTimer) clearTimeout(recordingTimer);
+      if (timerRef.current === recordingTimer) timerRef.current = null;
+    };
     recorder.ondataavailable = (event) => {
-      if (event.data && event.data.size > 0) chunks.push(event.data);
+      if (controller.signal.aborted) return;
+      if (event.data && event.data.size > 0) {
+        bytes += event.data.size;
+        if (bytes > 25 * 1024 * 1024) {
+          controller.abort();
+          if (recorder.state !== "inactive") recorder.stop();
+          releaseStream();
+          requestRef.current = null;
+          setState("idle");
+          setError(t("Recordings must be at most 25 MiB."));
+        } else chunks.push(event.data);
+      }
     };
     recorder.onstop = async () => {
+      clearRecordingTimer();
       const mimeType = stripAudioMimeParameters(recorder.mimeType);
       stream.getTracks().forEach((track) => track.stop());
       if (streamRef.current === stream) streamRef.current = null;
@@ -182,6 +184,7 @@ export function useVoiceRecorder(onTranscript: (text: string) => void) {
       }
     };
     recorder.onerror = () => {
+      clearRecordingTimer();
       controller.abort();
       if (recorder.state !== "inactive") recorder.stop();
       stream.getTracks().forEach((track) => track.stop());
@@ -193,7 +196,7 @@ export function useVoiceRecorder(onTranscript: (text: string) => void) {
       }
     };
     try {
-      recorder.start();
+      recorder.start(1000);
     } catch {
       releaseStream();
       requestRef.current = null;
@@ -202,6 +205,10 @@ export function useVoiceRecorder(onTranscript: (text: string) => void) {
       return;
     }
     recorderRef.current = recorder;
+    recordingTimer = setTimeout(() => {
+      if (recorder.state !== "inactive") recorder.stop();
+    }, 120000);
+    timerRef.current = recordingTimer;
     setState("recording");
   }, [releaseStream, state, t]);
 
@@ -217,15 +224,21 @@ export function useVoiceRecorder(onTranscript: (text: string) => void) {
     else if (state === "idle") void start();
   }, [start, state, stop]);
 
+  const cancel = useCallback(() => {
+    requestRef.current?.abort();
+    requestRef.current = null;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = null;
+    const recorder = recorderRef.current;
+    recorderRef.current = null;
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+    releaseStream();
+    setState("idle");
+    setError(null);
+  }, [releaseStream]);
+
   // Stop the mic if the component unmounts mid-recording.
   useEffect(() => {
-    const cancel = () => {
-      requestRef.current?.abort();
-      requestRef.current = null;
-      const recorder = recorderRef.current;
-      if (recorder && recorder.state !== "inactive") recorder.stop();
-      releaseStream();
-    };
     const switchWorkspace = () => {
       cancel();
       setState("idle");
@@ -242,7 +255,7 @@ export function useVoiceRecorder(onTranscript: (text: string) => void) {
       );
       cancel();
     };
-  }, [releaseStream]);
+  }, [cancel]);
 
-  return { state, error, toggle, start, stop };
+  return { state, error, toggle, start, stop, cancel };
 }

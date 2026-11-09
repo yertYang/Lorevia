@@ -7,8 +7,9 @@ name: Desktop Release
 #
 # Pull requests that touch apps/desktop build all three platforms without
 # publishing; they keep the downloads as workflow artifacts for 7 days.
-# Pushes to dev and manual validation runs exercise configured signing without
-# publishing. Pull requests always use disposable runtime signing keys.
+# Pushes to master prepare a new patch version and publish after every target
+# succeeds. Pushes to dev and manual validation runs do not publish.
+# Pull requests always use disposable runtime signing keys.
 #
 # Secrets:
 #   DESKTOP_RUNTIME_SIGNING_KEY  (required for releases) Ed25519 PEM matching
@@ -23,7 +24,10 @@ name: Desktop Release
 
 on:
   push:
-    branches: [dev]
+    branches: [master, dev]
+  release:
+    types: [published]
+  pull_request:
     paths:
       - apps/desktop/**
       - web/**
@@ -33,18 +37,14 @@ on:
       - Cargo.toml
       - Cargo.lock
       - VERSION
-      - .github/workflows/desktop-release.yml
-  release:
-    types: [published]
-  pull_request:
-    paths:
-      - apps/desktop/**
-      - web/**
-      - packages/browser-testing/**
-      - rust/**
-      - Cargo.toml
-      - Cargo.lock
-      - VERSION
+      - scripts/prepare-desktop-release.mjs
+      - scripts/lib/desktop-release.mjs
+      - scripts/desktop-release.test.mjs
+      - scripts/desktop-github-updates.test.mjs
+      - scripts/desktop-logging.test.mjs
+      - scripts/lib/release-logging.mjs
+      - scripts/update-desktop-readme.mjs
+      - scripts/validate-desktop-downloads.mjs
       - .github/workflows/desktop-release.yml
   workflow_dispatch:
     inputs:
@@ -57,10 +57,6 @@ on:
         type: boolean
         default: false
 
-env:
-  RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
-  PUBLISH: ${{ github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
-
 permissions:
   contents: write
 
@@ -69,7 +65,33 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      ref: ${{ steps.release.outputs.ref }}
+      publish: ${{ steps.release.outputs.publish }}
+      skip: ${{ steps.release.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.repository.default_branch || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check release automation
+        run: node --test scripts/desktop-release.test.mjs scripts/desktop-github-updates.test.mjs scripts/desktop-logging.test.mjs
+      - name: Prepare release or validation build
+        id: release
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+          PUBLISH: ${{ github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+        run: node scripts/prepare-desktop-release.mjs
+
   build:
+    needs: prepare
+    if: needs.prepare.outputs.skip != 'true'
     name: ${{ matrix.name }}
     strategy:
       fail-fast: false
@@ -87,6 +109,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     env:
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+      PUBLISH: ${{ needs.prepare.outputs.publish }}
       HAS_DEVELOPER_ID: ${{ secrets.APPLE_CERTIFICATE_P12 != '' }}
       HAS_NOTARY: ${{ secrets.APPLE_ID != '' }}
       HAS_RUNTIME_KEY: ${{ github.event_name != 'pull_request' && secrets.DESKTOP_RUNTIME_SIGNING_KEY != '' }}
@@ -98,7 +122,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.PUBLISH == 'true' && env.RELEASE_TAG || '' }}
+          ref: ${{ needs.prepare.outputs.ref }}
 
       - name: Verify release tag matches VERSION
         if: env.PUBLISH == 'true'
@@ -202,17 +226,26 @@ jobs:
           retention-days: 7
           path: apps/desktop/out/notarization-*.json
 
-      - name: Attach the downloads to the release
+      - name: Stage the signed core update
         if: env.PUBLISH == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # Each platform produces only its own downloads.
-          shopt -s nullglob
-          files=(out/*.dmg out/*-Setup.exe out/*-Portable.zip)
-          [ ${#files[@]} -gt 0 ] || { echo "No downloads were produced." >&2; exit 1; }
-          gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
+          cp ".local/${{ matrix.target }}/seed/runtime.json" "out/Lorevia-Core-${{ matrix.target }}.json"
+          cp .local/${{ matrix.target }}/seed/*.tar.gz out/
+
+      - name: Keep release downloads
+        if: env.PUBLISH == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            apps/desktop/out/*.dmg
+            apps/desktop/out/*-Setup.exe
+            apps/desktop/out/*-Portable.zip
+            apps/desktop/out/Lorevia-Core-*.json
+            apps/desktop/out/*.tar.gz
 
       - name: Remove the temporary signing keychain
         if: always() && runner.os == 'macOS' && env.HAS_DEVELOPER_ID == 'true' && github.event_name != 'pull_request'
@@ -232,3 +265,77 @@ jobs:
             apps/desktop/out/*.dmg
             apps/desktop/out/*-Setup.exe
             apps/desktop/out/*-Portable.zip
+
+  publish:
+    needs: [prepare, build]
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' && 'master' || github.event.repository.default_branch }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: downloads
+      - name: Verify all signed update packages
+        run: node scripts/validate-desktop-downloads.mjs
+      - name: Publish the complete release
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          for file in \
+            "Lorevia-MacOS-Apple-Silicon-v${version}.dmg" \
+            "Lorevia-MacOS-Intel-v${version}.dmg" \
+            "Lorevia-Windows-v${version}-Setup.exe" \
+            "Lorevia-Windows-v${version}-Portable.zip" \
+            Lorevia-Core-macos-arm64.json Lorevia-Core-macos-x64.json Lorevia-Core-windows-x64.json; do
+            test -s "downloads/$file"
+          done
+          # Existing releases (including drafts from interrupted runs) can be retried.
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --verify-tag --draft --generate-notes --title "Lorevia $RELEASE_TAG"
+          fi
+          (cd downloads && sha256sum *.dmg *-Setup.exe *-Portable.zip > SHA256SUMS.txt)
+          gh release upload "$RELEASE_TAG" downloads/* --clobber
+          if [ "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true ]; then
+            latest="$(gh api "repos/$GH_REPO/releases/latest" --jq .tag_name 2>/dev/null || true)"
+            make_latest=false
+            if [ -z "$latest" ] || [ "$(printf '%s\n' "$latest" "$RELEASE_TAG" | sort -V | tail -1)" = "$RELEASE_TAG" ]; then
+              make_latest=true
+            fi
+            gh release edit "$RELEASE_TAG" --draft=false --latest="$make_latest"
+          fi
+      - name: Update README after publication
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: |
+          set -euo pipefail
+          if [ "$(gh api "repos/$GH_REPO/releases/latest" --jq .tag_name)" != "$RELEASE_TAG" ]; then
+            echo 'A newer release is already published; keeping its README downloads.'
+            exit 0
+          fi
+          node scripts/update-desktop-readme.mjs
+          git add README.md
+          if ! git diff --cached --quiet; then
+            git -c 'user.name=github-actions[bot]' -c 'user.email=41898282+github-actions[bot]@users.noreply.github.com' commit -m "docs: update downloads for $RELEASE_TAG [skip ci]"
+            git push origin HEAD:refs/heads/master
+          fi
+
+  docker-image:
+    needs: [prepare, publish]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker-release.yml
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}

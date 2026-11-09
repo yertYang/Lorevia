@@ -342,6 +342,7 @@ export default function ChatWorkspace() {
   const resourceReuse = useResourceReusePolicy(state.sessionKey || "draft", state.messages[0]?.id);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [knowledgeBasesLoaded, setKnowledgeBasesLoaded] = useState(false);
+  const [voiceReplyOwned, setVoiceReplyOwned] = useState(false);
   const availableKbNames = useMemo(
     () => new Set(knowledgeBases.map(knowledgeBaseRef)),
     [knowledgeBases],
@@ -2787,6 +2788,7 @@ export default function ChatWorkspace() {
                       className="mx-auto w-full max-w-[960px] space-y-9 px-6"
                     >
                       <ChatMessageList
+                        suppressAutoPlay={voiceReplyOwned}
                         messages={state.messages}
                         isStreaming={state.isStreaming}
                         sessionId={state.sessionId}
@@ -2953,6 +2955,14 @@ export default function ChatWorkspace() {
                 onToggleKB={handleToggleKB}
                 onSelectLLM={setLLMSelection}
                 taskSessionId={state.sessionId}
+                voiceConversation={{
+                  key: `${state.workspaceId || ""}:${state.boundFromKey || state.sessionKey}`,
+                  reply: (() => {
+                    const message = [...state.messages].reverse().find(item => item.role === "assistant");
+                    return message ? { key: String(message.id ?? state.messages.length), content: message.content } : undefined;
+                  })(),
+                  onVoiceTurn: () => setVoiceReplyOwned(true),
+                }}
                 draftTaskIds={draftTaskIds}
                 onDraftTaskIdsChange={ids => setDraftTaskSelections(value => ({ ...value, [state.sessionKey]: ids }))}
                 onTasksLinked={ensureActivityPanelOpen}
@@ -2982,7 +2992,7 @@ export default function ChatWorkspace() {
                 createTarget={state.createTarget}
                 onCreateTargetChange={setCreateTarget}
                 onToggleMemoryFile={handleToggleMemoryFile}
-                onSend={handleSend}
+                onSend={(content) => { setVoiceReplyOwned(false); handleSend(content); }}
                 awaitingUserReply={awaitingUserReply}
                 onRemoveAttachment={removeAttachment}
                 onPreviewAttachment={handlePreviewPendingAttachment}

@@ -92,7 +92,10 @@
         "source_reader": true,
         "source_notes": true,
         "ocr": false,
-        "advanced_providers": false
+        "advanced_providers": false,
+        "semantic_retrieval": true,
+        "hybrid_retrieval": true,
+        "llm_reranking": true
       }
     },
     {

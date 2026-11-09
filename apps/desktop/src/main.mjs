@@ -1,7 +1,7 @@
-import { app, BrowserWindow, WebContentsView, Menu, ipcMain, shell, dialog, session, nativeTheme } from 'electron';
+import { app, BrowserWindow, WebContentsView, Menu, ipcMain, shell, dialog, session, nativeTheme, net } from 'electron';
 import { fork } from 'node:child_process';
 import { watch } from 'node:fs';
-import { mkdir, readFile, writeFile, rename, cp, appendFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rename, cp, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { installBundle, bundleConfig, verifyManifest } from './bundles.mjs';
@@ -11,6 +11,8 @@ import { WINDOWS, agentMarker, edition, targetId } from './platform.mjs';
 import { killTree } from './processes.mjs';
 import { createUpgradeBackup, restoreUpgradeBackup } from './upgrade.mjs';
 import { mediaPermissionPolicy } from './media-permissions.mjs';
+import { checkGithubUpdate, downloadGithubUpdate } from './github-updates.mjs';
+import { createErrorLogger } from './logging.mjs';
 
 app.setName('Lorevia');
 if (WINDOWS) app.setAppUserModelId('org.yanzhizhou.desktop');
@@ -24,6 +26,7 @@ const userRoot = process.env.YANZHIZHOU_TEST_HOME || process.env.OPEN_DEEPTUTOR_
 app.setPath('userData', userRoot);
 const runtimeHome = path.join(userRoot, 'workspace');
 const logPath = path.join(userRoot, 'logs/runtime.log');
+const updateErrors = createErrorLogger({ directory: path.dirname(logPath) });
 const activeFile = path.join(userRoot, 'active.json');
 const transactionFile = path.join(userRoot, 'upgrade.json');
 // Lorevia's own Settings page writes the interface language and theme here.
@@ -60,6 +63,10 @@ async function readJSON(file) {
 
 function coreVersion() {
   return active?.manifest.coreVersion ?? app.getVersion();
+}
+
+function updateOperation(source, id) {
+  return updateErrors.operation({ source, app_version: app.getVersion(), current_version: coreVersion(), platform: process.platform, arch: process.arch }, id);
 }
 
 /** What the shell page shows, already in the user's language. */
@@ -131,6 +138,7 @@ async function openContent(url) {
   hideContent();
   const origin = new URL(url).origin;
   view = new WebContentsView({ webPreferences: {
+    preload: path.join(sourceDirectory, 'updates-preload.cjs'),
     contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true,
     partition: 'persist:deeptutor',
   } });
@@ -153,7 +161,10 @@ async function openContent(url) {
   content.on('will-navigate', restrict);
   content.on('will-redirect', restrict);
   content.on('will-attach-webview', event => event.preventDefault());
-  content.on('render-process-gone', () => status({ phase: 'error', step: null, message: t('pageGone') }));
+  content.on('render-process-gone', (_event, details) => {
+    void updateOperation('renderer').log('renderer.failed', { reason: details.reason, exit_code: details.exitCode, runtime_id: active?.manifest.runtimeId });
+    status({ phase: 'error', step: null, message: t('pageGone') });
+  });
   window.contentView.addChildView(view);
   layout();
   await content.loadURL(url);
@@ -178,7 +189,8 @@ async function stopWorker() {
   });
 }
 
-async function launchRuntime(installed) {
+async function launchRuntime(installed, operation = updateOperation('runtime')) {
+  await operation.log('runtime.starting', { runtime_id: installed.manifest.runtimeId, target_version: installed.manifest.coreVersion });
   const config = bundleConfig(installed.destination, runtimeHome, installed.manifest.runtimeId);
   const child = fork(path.join(sourceDirectory, 'supervisor.mjs'), [], {
     execPath: config.nodePath, stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
@@ -192,12 +204,17 @@ async function launchRuntime(installed) {
       if (worker !== child || quitting) return;
       status(next);
       if (next.phase === 'ready' && !ready) { ready = true; resolve(next); }
+      if (next.phase === 'error' && ready) void operation.log('runtime.failed', { error: new Error(next.message || 'Runtime failed'), phase: next.phase });
       if (next.phase === 'error' && !ready) reject(new Error(next.message));
     });
-    child.once('error', reject);
+    child.once('error', error => {
+      if (ready) void operation.log('runtime.failed', { error });
+      else reject(error);
+    });
     child.once('exit', code => {
       if (worker !== child || quitting) return;
       status({ phase: 'error', step: null, message: t('workerExited', { code }) });
+      if (ready) void operation.log('runtime.failed', { error: new Error(state.message), exit_code: code });
       if (!ready) reject(new Error(state.message));
     });
     child.send({ type: 'start', config, logPath, cachePath: path.join(userRoot, 'cache', installed.manifest.runtimeId) });
@@ -207,88 +224,117 @@ async function launchRuntime(installed) {
 async function recoverInterruptedUpgrade() {
   const transaction = await readJSON(transactionFile);
   if (!transaction || transaction.phase !== 'testing') return;
-  status({ phase: 'starting', step: 'recovering' });
-  if (transaction.backup) {
-    if (transaction.backupFormat === 'native-v1') {
-      const previous = verifyManifest(transaction.previous, publicKey);
-      const config = bundleConfig(path.join(userRoot, 'runtimes', previous.runtimeId), runtimeHome, previous.runtimeId);
-      await restoreUpgradeBackup({ serverPath: config.serverPath, runtimeHome, backup: transaction.backup });
-    } else if (transaction.backupFormat === undefined) {
-      // Recover already-pending transactions written by an older shell.
-      try { await rename(runtimeHome, `${runtimeHome}.interrupted-${Date.now()}`); }
-      catch (error) { if (error.code !== 'ENOENT') throw error; }
-      await cp(transaction.backup, runtimeHome, { recursive: true });
-    } else throw new Error('Unsupported desktop recovery package format');
-  }
-  await writeJSON(activeFile, transaction.previous);
-  await writeJSON(transactionFile, { ...transaction, phase: 'recovered' });
+  const operation = updateOperation('recovery', transaction.operationId);
+  await operation.log('recovery.started', { target_version: transaction.candidate?.coreVersion, backup: transaction.backup });
+  try {
+    status({ phase: 'starting', step: 'recovering' });
+    if (transaction.backup) {
+      if (transaction.backupFormat === 'native-v1') {
+        const previous = verifyManifest(transaction.previous, publicKey);
+        const config = bundleConfig(path.join(userRoot, 'runtimes', previous.runtimeId), runtimeHome, previous.runtimeId);
+        await restoreUpgradeBackup({ serverPath: config.serverPath, runtimeHome, backup: transaction.backup });
+      } else if (transaction.backupFormat === undefined) {
+        // Recover already-pending transactions written by an older shell.
+        try { await rename(runtimeHome, `${runtimeHome}.interrupted-${Date.now()}`); }
+        catch (error) { if (error.code !== 'ENOENT') throw error; }
+        await cp(transaction.backup, runtimeHome, { recursive: true });
+      } else throw new Error('Unsupported desktop recovery package format');
+    }
+    await writeJSON(activeFile, transaction.previous);
+    await writeJSON(transactionFile, { ...transaction, phase: 'recovered' });
+    await operation.log('recovery.completed');
+  } catch (error) { await operation.log('recovery.failed', { error }); throw error; }
 }
 
-async function logStartupFailure(error) {
+async function logStartupFailure(error, operation = updateOperation('startup')) {
   // Bundle extraction can fail before the supervisor creates the runtime log.
   console.error(error);
-  try {
-    await mkdir(path.dirname(logPath), { recursive: true });
-    await appendFile(logPath, `\nDesktop startup failed: ${error.stack ?? error}\n`);
-  } catch (logError) { console.error(logError); }
+  await operation.log('startup.failed', { error });
 }
 
 async function boot() {
   if (busy || quitting) return;
   busy = true;
+  const operation = updateOperation('startup');
   try {
+    await operation.log('startup.stopping_previous');
     status({ phase: 'starting', step: 'starting' });
     await stopWorker();
     await recoverInterruptedUpgrade();
+    await operation.log('startup.verifying_core');
     const saved = await readJSON(activeFile);
     const manifestFile = saved ? path.join(userRoot, 'runtimes', verifyManifest(saved, publicKey).runtimeId, 'installed.json') : seed;
     active = await installBundle(manifestFile, userRoot, publicKey, step => status({ step }));
     if (quitting) return;
-    const ready = await launchRuntime(active);
+    await operation.log('startup.starting_core', { runtime_id: active.manifest.runtimeId, current_version: active.manifest.coreVersion });
+    const ready = await launchRuntime(active, operation);
     if (quitting) return;
     await writeJSON(activeFile, active.manifest);
     watchInterface();
     await refreshInterface();
+    await operation.log('startup.opening_interface');
     await openContent(ready.url);
+    await operation.log('runtime.running');
   } catch (error) {
-    await logStartupFailure(error);
+    await logStartupFailure(error, operation);
     status({ phase: 'error', step: null, message: error.message });
     await stopWorker();
   } finally { busy = false; }
 }
 
-async function installUpdate() {
+async function installUpdate(manifestFile, operation = updateOperation('local_update')) {
   if (busy || quitting || !active) return;
-  const choice = await dialog.showOpenDialog(window, { title: t('updateTitle'), properties: ['openFile'], filters: [{ name: t('updateFilter'), extensions: ['json'] }] });
-  if (choice.canceled) return;
-  const confirmation = await dialog.showMessageBox(window, {
-    type: 'question', buttons: [t('cancel'), t('updateConfirm')], defaultId: 0, cancelId: 0,
-    message: t('updateMessage'), detail: t('updateDetail'),
-  });
-  if (confirmation.response !== 1) return;
   busy = true;
   let transaction;
+  let stopped = false;
   try {
-    const next = await installBundle(choice.filePaths[0], userRoot, publicKey);
+    await operation.log('install.selecting_manifest');
+    if (!manifestFile) {
+      const choice = await dialog.showOpenDialog(window, { title: t('updateTitle'), properties: ['openFile'], filters: [{ name: t('updateFilter'), extensions: ['json'] }] });
+      if (choice.canceled) { await operation.log('install.cancelled'); return; }
+      manifestFile = choice.filePaths[0];
+    }
+    await operation.log('install.awaiting_confirmation');
+    const confirmation = await dialog.showMessageBox(window, {
+      type: 'question', buttons: [t('cancel'), t('updateConfirm')], defaultId: 0, cancelId: 0,
+      message: t('updateMessage'), detail: t('updateDetail'),
+    });
+    if (confirmation.response !== 1 || quitting) { await operation.log('install.cancelled'); return; }
+    await operation.log('install.verifying_core');
+    const next = await installBundle(manifestFile, userRoot, publicKey, step => { void operation.log(`install.${step}`); });
     if (next.manifest.runtimeId === active.manifest.runtimeId) return;
+    if (quitting) return;
     status({ phase: 'starting', step: 'updating' });
+    stopped = true;
+    await operation.log('install.stopping_core', { target_version: next.manifest.coreVersion, target_runtime_id: next.manifest.runtimeId });
     await stopWorker();
     const previousConfig = bundleConfig(active.destination, runtimeHome, active.manifest.runtimeId);
+    await operation.log('install.creating_backup');
     const backup = await createUpgradeBackup({ serverPath: previousConfig.serverPath, runtimeHome, backupRoot: path.join(userRoot, 'backups') });
-    transaction = { phase: 'testing', previous: active.manifest, candidate: next.manifest, backup, backupFormat: 'native-v1' };
+    await operation.log('install.backup_created', { backup });
+    transaction = { phase: 'testing', previous: active.manifest, candidate: next.manifest, backup, backupFormat: 'native-v1', operationId: operation.id };
     await writeJSON(transactionFile, transaction);
-    const ready = await launchRuntime(next);
+    await operation.log('install.starting_new_core');
+    const ready = await launchRuntime(next, operation);
+    await operation.log('install.opening_interface');
     await openContent(ready.url);
+    await operation.log('install.committing_version');
     await writeJSON(activeFile, next.manifest);
     await writeJSON(transactionFile, { ...transaction, phase: 'complete' });
     active = next;
     buildMenu();
     publish();
+    await operation.log('runtime.running', { current_version: next.manifest.coreVersion });
   } catch (error) {
+    await operation.log('install.failed', { error });
+    if (!stopped) {
+      await dialog.showMessageBox(window, { type: 'error', message: t('updateFailed'), detail: error.message });
+      return;
+    }
     await stopWorker();
     try { if (transaction) await recoverInterruptedUpgrade(); }
     catch (recoveryError) {
-      await logStartupFailure(recoveryError);
+      await logStartupFailure(recoveryError, operation);
       status({ phase: 'error', step: null, message: recoveryError.message });
       return;
     }
@@ -296,6 +342,54 @@ async function installUpdate() {
     busy = false;
     await boot();
   } finally { busy = false; }
+}
+
+async function githubUpdate(operation = updateOperation('github_check')) {
+  return checkGithubUpdate({ currentVersion: coreVersion(), fetchImpl: net.fetch, log: operation.log });
+}
+
+function updateSummary(update) {
+  const { version, available, compatible, url } = update;
+  return { version, available, compatible, url };
+}
+
+async function installGithubUpdate(expectedVersion) {
+  if (busy || quitting || !active) throw new Error(t('updateBusy'));
+  busy = true;
+  const operation = updateOperation('github_update');
+  let downloaded;
+  try {
+    const update = await githubUpdate(operation);
+    await operation.log('update.selecting_version', { expected_version: expectedVersion, target_version: update.version });
+    if (expectedVersion && expectedVersion !== update.version) throw new Error(t('updateChanged'));
+    if (!update.available || !update.compatible) throw new Error(t('updateInstallerRequired'));
+    downloaded = await downloadGithubUpdate({ update, root: path.join(userRoot, 'updates'), publicKey, fetchImpl: net.fetch, log: operation.log });
+  } catch (error) {
+    await operation.log('update.failed', { error });
+    throw error;
+  } finally { busy = false; }
+  try { await installUpdate(downloaded.manifestFile, operation); }
+  finally { await rm(downloaded.directory, { recursive: true, force: true }).catch(async error => { await operation.log('update_cleanup.failed', { error }); }); }
+}
+
+async function checkUpdateFromMenu() {
+  try {
+    const update = await githubUpdate();
+    if (!update.available) {
+      await dialog.showMessageBox(window, { message: t('updateCurrent'), buttons: ['OK'] });
+      return;
+    }
+    const choice = await dialog.showMessageBox(window, {
+      message: t('updateAvailable', { version: update.version }),
+      detail: t(update.compatible ? 'githubUpdateDetail' : 'updateInstallerRequired'),
+      buttons: [t('cancel'), t(update.compatible ? 'downloadUpdate' : 'openRelease')], defaultId: 0, cancelId: 0,
+    });
+    if (choice.response !== 1) return;
+    if (update.compatible) await installGithubUpdate(update.version);
+    else await shell.openExternal(update.url);
+  } catch (error) {
+    await dialog.showMessageBox(window, { type: 'error', message: t('githubUpdateFailed'), detail: error.message });
+  }
 }
 
 function buildMenu() {
@@ -326,6 +420,7 @@ function buildMenu() {
       { role: 'togglefullscreen', label: t('fullscreen') },
     ] },
     { label: t('core'), submenu: [
+      { label: t('checkGithubUpdate'), click: () => void checkUpdateFromMenu() },
       { label: t('restartCore'), click: async () => {
         const choice = await dialog.showMessageBox(window, { message: t('restartConfirm'), buttons: [t('cancel'), t('restart')], defaultId: 0, cancelId: 0 });
         if (choice.response === 1) void boot();
@@ -350,7 +445,11 @@ else {
     if (quitting) return;
     quitting = true;
     status({ phase: 'stopping', step: 'stopping' });
-    void stopWorker().finally(() => { exitAllowed = true; app.quit(); });
+    void stopWorker().catch(error => logStartupFailure(error)).finally(async () => {
+      await updateErrors.close();
+      exitAllowed = true;
+      app.quit();
+    });
   });
   app.on('window-all-closed', () => app.quit());
   // Electron waits for ESM evaluation before emitting ready; do not await ready
@@ -386,6 +485,16 @@ else {
     restart: () => { void boot(); },
     logs: async () => { await mkdir(path.dirname(logPath), { recursive: true }); await shell.openPath(path.dirname(logPath)); },
   })) ipcMain.handle(`desktop:${channel}`, (event, ...args) => { trustedShell(event); return handler(...args); });
+  const trustedContent = event => {
+    if (!view || event.sender !== view.webContents || event.senderFrame !== view.webContents.mainFrame
+      || !state.url || new URL(event.senderFrame.url).origin !== new URL(state.url).origin) throw new Error('Untrusted update IPC caller');
+  };
+  ipcMain.handle('desktop:check-update', async event => { trustedContent(event); return updateSummary(await githubUpdate()); });
+  ipcMain.handle('desktop:install-update', async (event, version) => {
+    trustedContent(event);
+    if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Invalid update version');
+    await installGithubUpdate(version);
+  });
   buildMenu();
   watchInterface();
   await window.loadURL(shellURL);

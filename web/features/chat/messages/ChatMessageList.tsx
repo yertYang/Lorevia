@@ -66,6 +66,7 @@ import {
 import { useVoiceAutoplay } from "@/hooks/useVoiceAutoplay";
 import { useRuntimeFeature } from "@/hooks/useRuntimeFeature";
 import {
+  SILENT_UNLOCK_WAV,
   SPEECH_PLAYBACK_FAILURE_MESSAGE,
   SPEECH_TIMEOUT_MESSAGE,
 } from "@/lib/voice-settings";
@@ -1456,9 +1457,6 @@ export function CopyActionButton({
 // Speaker button: synthesizes this one reply and plays it. Auto-play of later
 // replies is a Settings preference (`autoPlayFresh`), not a first-click prompt.
 let activePlayback: { owner: object; stop: () => void } | null = null;
-// 50 ms of playable unsigned 8-bit PCM silence; an empty WAV cannot unlock playback.
-const SILENT_UNLOCK_WAV =
-  "data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA";
 
 async function ttsErrorMessage(resp: Response): Promise<string> {
   try {
@@ -2183,7 +2181,9 @@ export const ChatMessageList = memo(function ChatMessageList({
   onOpenThread,
   onDeleteThread,
   onDetachThread,
+  suppressAutoPlay = false,
 }: {
+  suppressAutoPlay?: boolean;
   messages: ChatMessageItem[];
   isStreaming: boolean;
   sessionId?: string | null;
@@ -2697,7 +2697,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                         content={msg.content}
                         conversationKey={sessionId ?? undefined}
                         autoPlayFresh={
-                          isLastAssistant && freshlyCompletedIndex === i
+                          !suppressAutoPlay && isLastAssistant && freshlyCompletedIndex === i
                         }
                       />
                     )}

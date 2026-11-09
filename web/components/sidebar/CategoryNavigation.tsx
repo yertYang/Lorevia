@@ -6,7 +6,7 @@ import { useId, useState, startTransition, type ReactNode } from 'react'
 import dynamic from 'next/dynamic'
 import { usePathname, useRouter } from 'next/navigation'
 import { m, useReducedMotion } from 'framer-motion'
-import { MessageCircle, Search, Columns3, PenLine, Globe, Radio } from 'lucide-react'
+import { MessageCircle, Search, Columns3, PenLine, Globe } from 'lucide-react'
 import {
   HomeShelfIcon,
   LearningShelfIcon,
@@ -239,7 +239,6 @@ export function CategoryBody({
               { href: '/kanban', label: 'Task Board', icon: Columns3 },
               { href: '/co-writer', label: 'Co-Writer', icon: PenLine },
               { href: '/browser-testing', label: 'Browser testing', icon: Globe },
-              { href: '/voice', label: 'Voice conversation', icon: Radio },
             ]
               .filter(item => navVisibleUnderPolicy(item.href, nav.allowedSurfaces))
               .map(item => (

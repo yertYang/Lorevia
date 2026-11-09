@@ -24,6 +24,7 @@ import {
 } from "@/components/settings/shared";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import Button from "@/components/ui/Button";
+import DesktopUpdatesPanel from "@/components/settings/DesktopUpdatesPanel";
 import {
   checkAppUpdate,
   AppUpdateUnavailableError,
@@ -72,6 +73,8 @@ export default function AboutSettingsPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [error, setError] = useState("");
   const [unavailable, setUnavailable] = useState(false);
+  const [desktopUpdates, setDesktopUpdates] = useState(false);
+  useEffect(() => setDesktopUpdates(Boolean(window.loreviaUpdates)), []);
 
   const load = useCallback(async () => {
     try {
@@ -313,10 +316,14 @@ export default function AboutSettingsPage() {
           <p role="status" className="relative mt-4 text-[13px] leading-relaxed text-[var(--muted-foreground)]">
             {edition.short === "Web"
               ? t("This Web interface is updated with its server deployment. View release notes for update instructions.")
-              : t("Update this desktop app by downloading an installer for your platform.")}
+              : desktopUpdates
+                ? t("Check for signed core updates from GitHub below. Use the desktop installer to upgrade the desktop shell.")
+                : t("Update this desktop app by downloading an installer for your platform.")}
           </p>
         )}
       </section>
+
+      <DesktopUpdatesPanel />
 
       <SettingSection title={t("Download desktop app")}>
         <ResourceRow

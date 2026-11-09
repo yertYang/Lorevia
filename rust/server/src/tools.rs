@@ -225,14 +225,26 @@ impl ToolRegistry {
                     return Err(Error::missing());
                 }
                 let session = store.tool_session_info(&admission)?;
-                crate::knowledge::search(
-                    &store.connect()?,
-                    crate::store::text(&session, "workspace_id"),
-                    kb,
-                    &args,
-                )
+                Ok((
+                    crate::store::text(&session, "workspace_id").to_owned(),
+                    kb.to_owned(),
+                    args,
+                ))
             })
             .await;
+            let result = match result {
+                Ok((scope, kb, args)) => {
+                    crate::knowledge_retrieval::search(
+                        self.settings.clone(),
+                        self.store.clone(),
+                        scope,
+                        kb,
+                        args,
+                    )
+                    .await
+                }
+                Err(error) => Err(error),
+            };
             return match result {
                 Ok(value) => json!({"success":true,"content":value}),
                 Err(error) => json!({"success":false,"error":error.code,"content":error.message}),

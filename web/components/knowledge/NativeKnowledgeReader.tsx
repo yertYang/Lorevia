@@ -8,6 +8,7 @@ import { apiFetch, apiUrl } from '@/lib/api'
 import { activeWorkspaceId, scopedUrl } from '@/lib/workspace-scope'
 import { pageActionClass } from '@/components/layout/FeaturePage'
 import { readingChanged, readingRequest } from '@/lib/native-reading'
+import NativeRetrievalSettings from './NativeRetrievalSettings'
 
 type File = { name: string; sha256: string }
 type Passage = { path: string; hash: string; content: string }
@@ -35,6 +36,9 @@ export default function NativeKnowledgeReader({
   const [passage, setPassage] = useState<Passage | null>(null)
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<Hit[] | null>(null)
+  const [sourceFilter, setSourceFilter] = useState('')
+  const [topK, setTopK] = useState(5)
+  const [resultMode, setResultMode] = useState('')
   const [start, setStart] = useState(1)
   const [end, setEnd] = useState(1)
   const [offset, setOffset] = useState(0)
@@ -117,13 +121,15 @@ export default function NativeKnowledgeReader({
   const lines = passage?.content.split('\n') ?? []
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto p-4 sm:p-6">
+      <NativeRetrievalSettings url={url} revision={revision} />
       <form
         className="mb-4 flex flex-wrap gap-2"
         onSubmit={event => {
           event.preventDefault()
           void perform(async () => {
-            const result = await request<{ chunks: Hit[] }>('/search', { query, top_k: 10 })
+            const result = await request<{ chunks: Hit[]; retrieval_mode: string; rerank: boolean }>('/search', { query, top_k: topK, source_path: sourceFilter })
             setHits(result.chunks)
+            setResultMode(`${result.retrieval_mode}${result.rerank ? ' · ' + t('Reranked') : ''}`)
           })
         }}
       >
@@ -134,6 +140,17 @@ export default function NativeKnowledgeReader({
           onChange={event => setQuery(event.target.value)}
           placeholder={t('Search source passages')}
         />
+        <select aria-label={t('Source filter')} value={sourceFilter} onChange={event => setSourceFilter(event.target.value)}
+          className="max-w-[200px] rounded-lg border border-[var(--border)] bg-[var(--background)] px-2">
+          <option value="">{t('All sources')}</option>
+          {files.map(file => <option key={file.name} value={file.name}>{file.name}</option>)}
+        </select>
+        <label className="flex items-center gap-2 text-xs">{t('Results')}
+          <select value={topK} onChange={event => setTopK(Number(event.target.value))}
+            className="rounded-lg border border-[var(--border)] bg-[var(--background)] p-2">
+            {[3, 5, 10].map(count => <option key={count} value={count}>{count}</option>)}
+          </select>
+        </label>
         <button className={pageActionClass()} disabled={busy || !query.trim()}>
           <Search size={16} />
           {t('Search')}
@@ -151,6 +168,7 @@ export default function NativeKnowledgeReader({
       )}
       {hits && (
         <section aria-label={t('Search results')} className="mb-6 space-y-3">
+          <p className="text-xs text-[var(--muted-foreground)]">{resultMode}</p>
           {!hits.length && <p>{t('No results found')}</p>}
           {hits.map(hit => (
             <article key={hit.id} className="rounded-xl border border-[var(--border)] p-3">

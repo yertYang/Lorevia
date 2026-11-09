@@ -52,6 +52,7 @@ mod generation;
 mod document_parser;
 pub mod knowledge;
 mod knowledge_api;
+mod knowledge_retrieval;
 pub mod ocr;
 pub mod reading;
 mod reading_api;

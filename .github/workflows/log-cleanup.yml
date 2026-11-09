@@ -1,0 +1,40 @@
+name: Expire workflow logs
+
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+concurrency:
+  group: expire-workflow-logs
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Delete completed workflow logs older than 14 days
+        shell: bash
+        run: |
+          set -euo pipefail
+          cutoff="$(date -u -d '14 days ago' +'%Y-%m-%dT%H:%M:%SZ')"
+          # Use updated_at so a recent rerun of an old commit keeps its diagnostics.
+          run_ids="$(gh api --paginate "repos/$GH_REPO/actions/runs?per_page=100" --jq ".workflow_runs[] | select(.status == \"completed\" and .updated_at < \"$cutoff\") | .id")"
+          deleted=0
+          while IFS= read -r run_id; do
+            [ -n "$run_id" ] || continue
+            if result="$(gh api -X DELETE "repos/$GH_REPO/actions/runs/$run_id/logs" 2>&1)"; then
+              deleted=$((deleted + 1))
+            elif [[ "$result" != *"HTTP 404"* ]]; then
+              echo "Unable to expire logs for run $run_id: $result" >&2
+              exit 1
+            fi
+          done <<< "$run_ids"
+          echo "Expired logs for $deleted completed runs. Workflow history, release assets and packages are preserved."

@@ -11,6 +11,14 @@ name: Docker Release
 # Platforms: linux/amd64, linux/arm64
 
 on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      prerelease:
+        default: false
+        type: boolean
   release:
     types: [published]
 
@@ -21,13 +29,16 @@ permissions:
 jobs:
   validate-release-tag:
     name: Validate release tag
-    if: startsWith(github.event.release.tag_name, 'v')
+    if: startsWith(inputs.tag || github.event.release.tag_name, 'v')
     runs-on: ubuntu-latest
     outputs:
       image_tag: ${{ steps.validate.outputs.image_tag }}
       is_stable: ${{ steps.validate.outputs.is_stable }}
+      is_latest: ${{ steps.latest.outputs.is_latest }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.event.release.tag_name }}
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -35,7 +46,20 @@ jobs:
         id: validate
         run: node scripts/validate-release-tag.mjs
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+      - name: Keep older retries from replacing the latest image
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+        run: |
+          latest="$(gh api "repos/$GH_REPO/releases/latest" --jq .tag_name)"
+          if [ "$latest" = "$RELEASE_TAG" ]; then
+            echo 'is_latest=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'is_latest=false' >> "$GITHUB_OUTPUT"
+          fi
 
   build-and-push:
     name: Build and Push Multi-Platform Docker Image
@@ -45,6 +69,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.event.release.tag_name }}
 
       # Required for linux/arm64 cross-compilation on GitHub-hosted ubuntu runners
       - name: Set up QEMU
@@ -70,7 +96,7 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=raw,value=${{ needs.validate-release-tag.outputs.image_tag }}
-            type=raw,value=latest,enable=${{ github.event.release.prerelease == false && needs.validate-release-tag.outputs.is_stable == 'true' }}
+            type=raw,value=latest,enable=${{ !inputs.prerelease && github.event.release.prerelease != true && needs.validate-release-tag.outputs.is_stable == 'true' && needs.validate-release-tag.outputs.is_latest == 'true' }}
 
       - name: Build and push
         uses: docker/build-push-action@v6

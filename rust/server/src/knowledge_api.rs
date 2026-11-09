@@ -21,6 +21,11 @@ pub fn router() -> Router<App> {
         .route("/api/knowledge-bases/{kb}", get(detail).delete(delete))
         .route("/api/knowledge-bases/{kb}/upload", post(upload))
         .route("/api/knowledge-bases/{kb}/search", post(search))
+        .route(
+            "/api/knowledge-bases/{kb}/retrieval",
+            get(retrieval).put(configure_retrieval),
+        )
+        .route("/api/knowledge-bases/{kb}/reindex", post(reindex))
         .route("/api/knowledge-bases/{kb}/source", get(source))
         .route("/api/knowledge-bases/{kb}/original", get(original))
         .route("/api/knowledge-bases/{kb}/passage", get(passage))
@@ -51,7 +56,7 @@ async fn list(State(app): State<App>, Query(scope): Query<Scope>) -> Result<Json
 }
 async fn providers() -> Json<Value> {
     Json(
-        json!([{"id":"native_lexical","name":"Native lexical search","description":"Native document text extraction and lexical retrieval with immutable source citations. Local scanned-PDF and image OCR is available on supported platforms. No embedding API required.","configured":true,"requires_api_key":false,"modes":["lexical"],"default_mode":"lexical","linkable":false,"setup_required":false,"ocr_available":crate::ocr::available()}]),
+        json!([{"id":"native_lexical","name":"Native retrieval","description":"Local lexical search, persistent semantic vectors, hybrid rank fusion and optional LLM reranking with immutable source citations. Semantic retrieval requires a configured embedding service and a built index.","configured":true,"requires_api_key":false,"modes":["lexical","vector","hybrid"],"default_mode":"lexical","linkable":false,"setup_required":false,"ocr_available":crate::ocr::available()}]),
     )
 }
 async fn policy() -> Json<Value> {
@@ -188,10 +193,55 @@ async fn search(
     Query(scope): Query<Scope>,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>> {
+    Ok(Json(
+        crate::knowledge_retrieval::search(
+            app.settings.clone(),
+            app.store.clone(),
+            scope.id()?,
+            kb,
+            body,
+        )
+        .await?,
+    ))
+}
+async fn retrieval(
+    State(app): State<App>,
+    Path(kb): Path<String>,
+    Query(scope): Query<Scope>,
+) -> Result<Json<Value>> {
+    let settings = app.settings.clone();
     run(app, scope, false, move |c, s| {
-        data::search(c, s, &kb, &body)
+        crate::knowledge_retrieval::status(c, s, &kb, &settings)
     })
     .await
+}
+async fn configure_retrieval(
+    State(app): State<App>,
+    Path(kb): Path<String>,
+    Query(scope): Query<Scope>,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>> {
+    let settings = app.settings.clone();
+    run(app, scope, true, move |c, s| {
+        crate::knowledge_retrieval::configure(c, s, &kb, &body, &settings)
+    })
+    .await
+}
+async fn reindex(
+    State(app): State<App>,
+    Path(kb): Path<String>,
+    Query(scope): Query<Scope>,
+) -> Result<Json<Value>> {
+    Ok(Json(
+        crate::knowledge_retrieval::rebuild(
+            app.settings.clone(),
+            app.store.clone(),
+            scope.id()?,
+            kb,
+            true,
+        )
+        .await?,
+    ))
 }
 async fn progress(
     State(app): State<App>,

@@ -85,6 +85,30 @@ CREATE TABLE IF NOT EXISTS native_knowledge_chunks (
 );
 CREATE INDEX IF NOT EXISTS native_knowledge_chunks_scope ON native_knowledge_chunks(workspace_id,kb,path);
 CREATE VIRTUAL TABLE IF NOT EXISTS native_knowledge_fts USING fts5(id UNINDEXED,terms,tokenize='unicode61');
+-- Publish a complete vector generation atomically; failed builds never replace it.
+CREATE TABLE IF NOT EXISTS native_knowledge_retrieval (
+ workspace_id TEXT NOT NULL, kb TEXT NOT NULL, config_json TEXT NOT NULL DEFAULT '{}',
+ generation TEXT NOT NULL DEFAULT '', fingerprint TEXT NOT NULL DEFAULT '',
+ snapshot TEXT NOT NULL DEFAULT '', dimension INTEGER NOT NULL DEFAULT 0,
+ build_id TEXT NOT NULL DEFAULT '', build_started REAL NOT NULL DEFAULT 0,
+ error_code TEXT NOT NULL DEFAULT '', error_detail TEXT NOT NULL DEFAULT '',
+ operation_id TEXT NOT NULL DEFAULT '', updated_at REAL NOT NULL DEFAULT 0,
+ PRIMARY KEY(workspace_id,kb)
+);
+CREATE TABLE IF NOT EXISTS native_knowledge_vectors (
+ workspace_id TEXT NOT NULL, kb TEXT NOT NULL, generation TEXT NOT NULL,
+ chunk_id TEXT NOT NULL, embedding BLOB NOT NULL,
+ PRIMARY KEY(workspace_id,kb,generation,chunk_id)
+);
+CREATE TRIGGER IF NOT EXISTS native_knowledge_vector_delete AFTER DELETE ON native_knowledge_chunks
+BEGIN
+ DELETE FROM native_knowledge_vectors WHERE workspace_id=OLD.workspace_id AND kb=OLD.kb AND chunk_id=OLD.id;
+END;
+CREATE TRIGGER IF NOT EXISTS native_knowledge_retrieval_delete AFTER DELETE ON native_knowledge_bases
+BEGIN
+ DELETE FROM native_knowledge_vectors WHERE workspace_id=OLD.workspace_id AND kb=OLD.name;
+ DELETE FROM native_knowledge_retrieval WHERE workspace_id=OLD.workspace_id AND kb=OLD.name;
+END;
 CREATE TABLE IF NOT EXISTS native_knowledge_sources (
  workspace_id TEXT NOT NULL,kb TEXT NOT NULL,path TEXT NOT NULL,sha256 TEXT NOT NULL,
  content TEXT NOT NULL,created_at REAL NOT NULL,

@@ -172,6 +172,68 @@ fn resolve(catalog: &Value, selection: &Value, kind: &str) -> Result<SpeechModel
     })
 }
 
+// Server speech is a runtime default, never copied into a user's catalog or
+// returned to the browser. Explicit catalog selections keep taking precedence.
+fn server_catalog(base: &str, key: &str, stt: &str, tts: &str, voice: &str) -> Value {
+    let mut catalog = json!({"services":{}});
+    for (kind, model) in [("stt", stt), ("tts", tts)] {
+        catalog["services"][kind] = json!({
+            "active_profile_id":"server-speech", "active_model_id":"server-model",
+            "profiles":[{"id":"server-speech", "binding":"custom", "base_url":base,
+                "api_key":key, "models":[{"id":"server-model", "model":model,
+                    "voice":voice, "response_format":"wav", "language":"auto"}]}]
+        });
+    }
+    catalog
+}
+
+fn resolve_runtime(catalog: &Value, kind: &str) -> Result<SpeechModel> {
+    let service = &catalog["services"][kind];
+    if !text(service, "active_profile_id").is_empty()
+        || !text(service, "active_model_id").is_empty()
+    {
+        return resolve(catalog, &Value::Null, kind);
+    }
+    let base = std::env::var("SPEECH_BASE_URL").unwrap_or_default();
+    if base.trim().is_empty() {
+        return resolve(catalog, &Value::Null, kind);
+    }
+    let value = |name: &str, default: &str| {
+        std::env::var(name)
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| default.to_owned())
+    };
+    resolve(
+        &server_catalog(
+            &base,
+            &value("SPEECH_API_KEY", ""),
+            &value("SPEECH_STT_MODEL", "sensevoice-small-int8"),
+            &value("SPEECH_TTS_MODEL", "kokoro-v1.1-int8"),
+            &value("SPEECH_VOICE", "zf_001"),
+        ),
+        &Value::Null,
+        kind,
+    )
+}
+
+async fn status(State(app): State<Arc<Application>>) -> Result<Json<Value>> {
+    Ok(Json(
+        blocking(move || {
+            let catalog = app.settings.catalog()?;
+            let mut status = json!({});
+            for kind in ["stt", "tts"] {
+                status[kind] = match resolve_runtime(&catalog, kind) {
+                    Ok(model) => json!({"configured":true,"model":model.model}),
+                    Err(error) => json!({"configured":false,"message":error.message}),
+                };
+            }
+            Ok(status)
+        })
+        .await?,
+    ))
+}
+
 fn audio_format(content_type: &str) -> Result<(&'static str, &'static str)> {
     match content_type
         .split(';')
@@ -284,6 +346,7 @@ async fn transcribe(model: SpeechModel, audio: Vec<u8>, mime: &str) -> Result<Va
 
 pub(crate) fn router() -> Router<Arc<Application>> {
     Router::new()
+        .route("/api/voice/status", axum::routing::get(status))
         .route("/api/voice/tts", post(playback))
         .route("/api/settings/voice/preview", post(playback_preview))
         .route("/api/settings/voice/voices", post(voices))
@@ -310,7 +373,7 @@ fn draft_model(app: &Application, body: &Value, kind: &str) -> Result<SpeechMode
 /// An absent voice service leaves captions enabled. Request WAV so the timeline
 /// can use the recorded duration instead of estimating when a scene ends.
 pub(crate) async fn lesson_voice(catalog: &Value, input: &str) -> Result<Option<Vec<u8>>> {
-    let mut model = match resolve(catalog, &Value::Null, "tts") {
+    let mut model = match resolve_runtime(catalog, "tts") {
         Ok(m) => m,
         Err(e) if e.code == "tts_not_configured" => return Ok(None),
         Err(e) => return Err(e),
@@ -341,10 +404,7 @@ async fn playback(
             preferences["voice_math_speak"] != false,
             text(&preferences, "language").starts_with("zh"),
         );
-        Ok((
-            resolve(&app.settings.catalog()?, &Value::Null, "tts")?,
-            input,
-        ))
+        Ok((resolve_runtime(&app.settings.catalog()?, "tts")?, input))
     })
     .await?;
     synthesize(model, &input, 16384).await
@@ -561,7 +621,7 @@ async fn recording(
     // An early response closes HTTP/1.1 while Next/undici is still writing the
     // audio, turning an actionable 400 into an EPIPE and a generic HTTP 500.
     audio_format(&mime)?;
-    let model = blocking(move || resolve(&app.settings.catalog()?, &Value::Null, "stt")).await?;
+    let model = blocking(move || resolve_runtime(&app.settings.catalog()?, "stt")).await?;
     Ok(Json(transcribe(model, audio, &mime).await?))
 }
 
@@ -612,6 +672,53 @@ mod tests {
         body
     }
     const MULTIPART: &str = "multipart/form-data; boundary=test-boundary";
+
+    #[test]
+    fn server_speech_uses_sensevoice_and_kokoro_compatible_requests() {
+        let catalog = server_catalog(
+            "http://lorevia-speech:8090/v1",
+            "synthetic-secret",
+            "sensevoice-small-int8",
+            "kokoro-v1.1-int8",
+            "zf_001",
+        );
+        let stt = resolve(&catalog, &Value::Null, "stt").unwrap();
+        assert_eq!(
+            stt.endpoint.as_str(),
+            "http://lorevia-speech:8090/v1/audio/transcriptions"
+        );
+        assert_eq!(stt.model, "sensevoice-small-int8");
+        assert_eq!(stt.language, "auto");
+        let tts = resolve(&catalog, &Value::Null, "tts").unwrap();
+        assert_eq!(
+            tts.endpoint.as_str(),
+            "http://lorevia-speech:8090/v1/audio/speech"
+        );
+        assert_eq!(tts.model, "kokoro-v1.1-int8");
+        assert_eq!(tts.voice, "zf_001");
+        assert_eq!(tts.format, "wav");
+        assert_eq!(tts.key, "synthetic-secret");
+    }
+
+    #[tokio::test]
+    async fn speech_status_exposes_model_names_without_provider_credentials() {
+        let home = tempfile::tempdir().unwrap();
+        let app = Application::open(home.path()).unwrap();
+        let mut value = catalog("http://private-provider.invalid/v1");
+        value["services"]["tts"] = value["services"]["stt"].clone();
+        app.settings.save_catalog(value).unwrap();
+        let (status, body) =
+            request(app, "GET", "/api/voice/status", vec![], "application/json").await;
+        assert_eq!(status, StatusCode::OK);
+        let status: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            status,
+            json!({"stt":{"configured":true,"model":"synthetic-whisper"},"tts":{"configured":true,"model":"synthetic-whisper"}})
+        );
+        let text = String::from_utf8(body).unwrap();
+        assert!(!text.contains("synthetic-secret"));
+        assert!(!text.contains("private-provider"));
+    }
 
     #[test]
     fn speech_uses_default_model_provider_reference_and_stt_overrides() {

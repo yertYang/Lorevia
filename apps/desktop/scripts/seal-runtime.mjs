@@ -45,7 +45,7 @@ const archiveHash = await sha256(stagingArchive);
 const buildInfo = JSON.parse(await readFile(path.join(target.runtime, 'BUILD_INFO.json'), 'utf8'));
 // Two local builds from the same HEAD may contain different uncommitted work.
 const localSuffix = buildInfo.source?.mode === 'working-tree' ? `-local-${archiveHash.slice(0, 12)}` : '';
-const runtimeId = `${coreVersion}-${commit.slice(0, 9)}-${target.arch}${localSuffix}`;
+const runtimeId = `${coreVersion}-${commit.slice(0, 9)}-${target.id}${localSuffix}`;
 const archive = `open-deeptutor-core-${runtimeId}.tar.gz`;
 await rename(stagingArchive, path.join(target.seed, archive));
 const manifest = {

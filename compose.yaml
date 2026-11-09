@@ -9,6 +9,12 @@ services:
       dockerfile: Dockerfile
       target: production
     init: true
+    environment:
+      SPEECH_BASE_URL: ${SPEECH_BASE_URL:-}
+      SPEECH_API_KEY: ${SPEECH_API_KEY:-}
+      SPEECH_STT_MODEL: ${SPEECH_STT_MODEL:-sensevoice-small-int8}
+      SPEECH_TTS_MODEL: ${SPEECH_TTS_MODEL:-kokoro-v1.1-int8}
+      SPEECH_VOICE: ${SPEECH_VOICE:-zf_001}
     ports:
       - "127.0.0.1:${HOST_PORT_FRONTEND:-3782}:3782"
     volumes:
