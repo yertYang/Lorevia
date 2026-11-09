@@ -70,7 +70,7 @@ export default function AboutSettingsPage() {
   const [savingChecks, setSavingChecks] = useState(false);
   const [checks, setChecks] = useState({ enabled: false });
   const [requesting, setRequesting] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmation, setConfirmation] = useState<{ target: string; revision?: string } | null>(null);
   const [error, setError] = useState("");
   const [unavailable, setUnavailable] = useState(false);
   const [desktopUpdates, setDesktopUpdates] = useState(false);
@@ -178,13 +178,15 @@ export default function AboutSettingsPage() {
   };
 
   const update = useCallback(async () => {
+    if (!confirmation) return;
     setRequesting(true);
     setError("");
     try {
-      const next = await requestAppUpdate(status?.release?.revision);
+      const next = await requestAppUpdate(confirmation.revision);
       setJob(next);
-      setConfirmOpen(false);
+      setConfirmation(null);
     } catch (cause) {
+      setConfirmation(null);
       setError(
         cause instanceof Error
           ? cause.message
@@ -193,7 +195,7 @@ export default function AboutSettingsPage() {
     } finally {
       setRequesting(false);
     }
-  }, [t, status?.release?.revision]);
+  }, [t, confirmation]);
 
   const currentVersion =
     normalizeVersionTag(status?.current_version) ??
@@ -224,7 +226,7 @@ export default function AboutSettingsPage() {
     status.update_available &&
     status.installation.automatic_update &&
     status.launcher_managed &&
-    !activeJob,
+    (!serverUpdates || status.release?.revision) && !error && !checking && !requesting && !activeJob,
   );
   const upToDate = Boolean(status?.release && !status.update_available);
 
@@ -265,7 +267,7 @@ export default function AboutSettingsPage() {
               <RefreshCw className="h-3.5 w-3.5" />
               {t("View updates")}
             </a>
-            {!canUpdate && (
+            {!serverUpdates && !canUpdate && (
               <a
                 href={PRODUCT_DOWNLOADS_PATH}
                 target="_blank"
@@ -287,52 +289,16 @@ export default function AboutSettingsPage() {
                 <ArrowUpRight className="h-3.5 w-3.5" />
               </a>
             )}
-            {status?.is_admin && (
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                loading={checking}
-                disabled={!status.check_enabled || activeJob}
-                icon={<RefreshCw className="h-3.5 w-3.5" />}
-                onClick={() => void check()}
-              >
-                {t("Check now")}
-              </Button>
-            )}
-            {canUpdate && (
-              <Button
-                type="button"
-                size="sm"
-                icon={<Download className="h-3.5 w-3.5" />}
-                onClick={() => setConfirmOpen(true)}
-              >
-                {t("Update to {{version}}", { version: updateTarget })}
-              </Button>
-            )}
           </div>
         </div>
-        {unavailable && (
+        {unavailable && edition.short !== "Web" && (
           <p role="status" className="relative mt-4 text-[13px] leading-relaxed text-[var(--muted-foreground)]">
-            {edition.short === "Web"
-              ? t("This Web interface is updated with its server deployment. View release notes for update instructions.")
-              : desktopUpdates
-                ? t("Check for signed core updates from GitHub below. Use the desktop installer to upgrade the desktop shell.")
-                : t("Update this desktop app by downloading an installer for your platform.")}
+            {desktopUpdates
+              ? t("Check for signed core updates from GitHub below. Use the desktop installer to upgrade the desktop shell.")
+              : t("Update this desktop app by downloading an installer for your platform.")}
           </p>
         )}
       </section>
-
-      <DesktopUpdatesPanel />
-
-      <SettingSection title={t("Download desktop app")}>
-        <ResourceRow
-          title={t("Download desktop app")}
-          description={t("Check available installers for macOS Apple Silicon, macOS Intel and Windows x64.")}
-          href={PRODUCT_DOWNLOADS_PATH}
-          icon={<Download className="h-4 w-4" />}
-        />
-      </SettingSection>
 
       {error && (
         <div className="mb-7 flex items-start gap-2 border-l-2 border-red-500/70 py-1 pl-3 text-[12.5px] leading-relaxed text-red-600 dark:text-red-400">
@@ -341,45 +307,25 @@ export default function AboutSettingsPage() {
         </div>
       )}
 
-      <SettingSection title={t("Software")}>
-        <SettingRow
-          title={t("Current version")}
-          control={<CodeValue value={currentVersion} />}
-        />
-        {status?.current_revision && <SettingRow
-          title={t("Server code revision")}
-          control={<CodeValue value={status.current_revision.slice(0, 12)} />}
-        />}
-        {status && <SettingRow
-          title={t("Installation")}
-          description={t(
-            status?.installation.reason || "How DeepTutor is installed here.",
-          )}
-          control={
-            <span className="text-[12.5px] text-[var(--foreground)]">
-              {t(INSTALLATION_LABELS[installMode])}
-            </span>
-          }
-        />}
-        {status && <SettingRow
-          title={t("Release channel")}
-          description={t(serverUpdates
-            ? "Checks the server's configured Git tracking branch."
-            : "Only stable, published DeepTutor releases are considered.")}
-          control={
-            <span className="text-[12.5px] text-[var(--foreground)]">
-              {t(serverUpdates ? "Server Git branch" : "Stable")}
-            </span>
-          }
-        />}
-      </SettingSection>
-
       {status && <SettingSection
-        title={t("Updates")}
+        title={t(serverUpdates ? "Docker updates" : "Updates")}
         description={t(serverUpdates
           ? "Check for server code changes, then confirm to rebuild and restart. Building may take several minutes."
           : "Version checks are cached for 24 hours. DeepTutor never installs an update without confirmation.")}
       >
+        {serverUpdates && (
+          <>
+            <SettingRow title={t("Deployed commit")} control={<CodeValue value={status.current_revision?.slice(0, 12) || "—"} />} />
+            {status.source && <SettingRow title={t("Update source")} control={
+              <div className="flex flex-wrap items-center gap-2">
+                {status.source.repository && <a className="text-[13px] underline" href={status.source.repository} target="_blank" rel="noopener noreferrer">
+                  {status.source.repository.replace("https://github.com/", "")}
+                </a>}
+                <CodeValue value={status.source.branch} />
+              </div>
+            } />}
+          </>
+        )}
         <SettingRow
           title={t("Check for updates")}
           description={t(
@@ -416,6 +362,32 @@ export default function AboutSettingsPage() {
           }
         />
 
+        <div className="flex flex-wrap gap-2 border-t border-[var(--border)]/50 py-4">
+          {status?.is_admin && (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              loading={checking}
+              disabled={!status.check_enabled || activeJob || savingChecks || requesting}
+              icon={<RefreshCw className="h-3.5 w-3.5" />}
+              onClick={() => void check()}
+            >
+              {t(serverUpdates ? "Check for new commits" : "Check now")}
+            </Button>
+          )}
+          {canUpdate && (
+            <Button
+              type="button"
+              size="sm"
+              icon={<Download className="h-3.5 w-3.5" />}
+              onClick={() => setConfirmation({ target: updateTarget, revision: status.release?.revision })}
+            >
+              {serverUpdates ? t("Pull code and rebuild") : t("Update to {{version}}", { version: updateTarget })}
+            </Button>
+          )}
+        </div>
+
         {status?.release?.migration_warning && (
           <div className="flex items-start gap-2 border-t border-[var(--border)]/50 py-3.5 text-[12.5px] leading-relaxed text-amber-700 dark:text-amber-400">
             <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
@@ -425,7 +397,7 @@ export default function AboutSettingsPage() {
           </div>
         )}
 
-        {status?.release?.excerpt && (
+        {!serverUpdates && status?.release?.excerpt && (
           <div className="border-t border-[var(--border)]/50 py-4">
             <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
               {status.release.name || t("What changed")}
@@ -477,6 +449,61 @@ export default function AboutSettingsPage() {
         )}
       </SettingSection>}
 
+      {!status && !loading && edition.short === "Web" && (
+        <SettingSection title={t("Docker updates")} description={unavailable
+          ? t("Enable the Docker updater on your server to pull new commits from GitHub here.")
+          : t("Could not read the server update status.")}>
+          {unavailable && <ResourceRow
+            title={t("Set up Docker updates")}
+            description={t("Configure the GitHub checkout and the update service on the Docker host.")}
+            href={`${PRODUCT_REPOSITORY_URL}/blob/master/deployment/README.md`}
+            icon={<ArrowUpRight className="h-4 w-4" />}
+          />}
+          <Button type="button" size="sm" variant="secondary" icon={<RefreshCw className="h-3.5 w-3.5" />}
+            onClick={() => void load()}>{t("Refresh status")}</Button>
+        </SettingSection>
+      )}
+
+      <DesktopUpdatesPanel />
+
+      <SettingSection title={t("Download desktop app")}>
+        <ResourceRow
+          title={t("Download desktop app")}
+          description={t("Check available installers for macOS Apple Silicon, macOS Intel and Windows x64.")}
+          href={PRODUCT_DOWNLOADS_PATH}
+          icon={<Download className="h-4 w-4" />}
+        />
+      </SettingSection>
+
+      <SettingSection title={t("Software")}>
+        <SettingRow
+          title={t("Current version")}
+          control={<CodeValue value={currentVersion} />}
+        />
+        {status && <SettingRow
+          title={t("Installation")}
+          description={t(
+            status?.installation.reason || "How DeepTutor is installed here.",
+          )}
+          control={
+            <span className="text-[12.5px] text-[var(--foreground)]">
+              {t(INSTALLATION_LABELS[installMode])}
+            </span>
+          }
+        />}
+        {status && <SettingRow
+          title={t("Release channel")}
+          description={t(serverUpdates
+            ? "Checks the server's configured Git tracking branch."
+            : "Only stable, published DeepTutor releases are considered.")}
+          control={
+            <span className="text-[12.5px] text-[var(--foreground)]">
+              {t(serverUpdates ? "Server Git branch" : "Stable")}
+            </span>
+          }
+        />}
+      </SettingSection>
+
       <SettingSection title={t("Project")}>
         <ResourceRow
           title={t("GitHub")}
@@ -493,18 +520,18 @@ export default function AboutSettingsPage() {
       </SettingSection>
 
       <ConfirmDialog
-        open={confirmOpen}
+        open={Boolean(confirmation)}
         title={t("Update and restart DeepTutor?")}
-        confirmLabel={t("Update and restart")}
+        confirmLabel={t(serverUpdates ? "Pull code and rebuild" : "Update and restart")}
         busy={requesting}
         busyLabel={t("Preparing update…")}
         onConfirm={() => void update()}
-        onCancel={() => setConfirmOpen(false)}
+        onCancel={() => setConfirmation(null)}
       >
         {t(serverUpdates
           ? "The server will pull code, build an image and restart the application. Finish active conversations first. Settings and data are preserved. Target: {{version}}."
           : "DeepTutor will briefly stop, install {{version}}, and reopen with the same settings. Active conversations must finish first.",
-          { version: updateTarget })}
+          { version: confirmation?.target })}
       </ConfirmDialog>
     </div>
   );

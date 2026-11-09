@@ -1,9 +1,52 @@
-# Docker server with updates from the Web UI
+# 从 GitHub 更新 Docker 服务
+
+在服务器上使用 Lorevia 的独立 Git 工作目录，并让部署分支跟踪 GitHub 上的目标分支（默认是 `origin/master`）。管理员可以在 **设置 → 关于 → Docker 更新** 点击 **检查新提交**，核对仓库、分支、当前提交和目标提交，再点 **拉取代码并重建**。只检查不会修改工作目录或重启应用。即使版本号未变，也能按提交更新。
+
+**首次启用**：已有部署先备份数据，确认原有数据目录和端口；新部署可从 `https://github.com/yertYang/Lorevia.git` 克隆。请在服务器工作目录的 `.env` 中配置 `DEEPTUTOR_REPO`（工作目录的绝对路径）、`DEEPTUTOR_UPDATE_TOKEN`（用 `openssl rand -hex 32` 生成）、`DEEPTUTOR_DATA_DIR` 和 `HOST_PORT_FRONTEND`。新部署默认使用项目名 `lorevia`；接入现有部署时，使用原来的项目名、数据目录和端口，不要同时启动两个实例。
+
+```sh
+# 在部署服务器的 Git 工作目录中运行
+export DEEPTUTOR_BUILD_REVISION="$(git rev-parse HEAD)"
+docker compose -f compose.yaml -f compose.server.yaml up -d --build
+```
+
+登录管理员账号后刷新“关于”页面。默认开发容器和仅运行镜像的部署没有更新服务，只显示配置入口。构建失败时原容器继续运行；新容器启动后通过健康检查才算成功。若替换后健康检查失败，需要管理员处理，不会自动回滚。
+
+### 从自己的电脑接入已有服务器（一次即可）
+
+如果服务器已经用本仓库的 `compose.yaml` 部署，并且原有端口和数据目录配置保存在仓库的 `.env` 中，可以从自己的电脑执行下面这条 SSH 命令。替换 SSH 主机、工作目录和 **原有 Compose 项目名**。命令只在首次接入时需要；之后应用代码的检查、更新和重启全部在网页上完成。
+
+```sh
+ssh admin@your-server 'cd /srv/Lorevia && sh -s' <<'SETUP'
+set -eu
+project=lorevia  # 改为原项目名，可在容器的 com.docker.compose.project 标签中查看
+test -n "$(docker compose -p "$project" -f compose.yaml ps -q deeptutor)" || {
+  echo "没有找到正在运行的 deeptutor 服务，请核对目录和项目名。" >&2; exit 1;
+}
+test -z "$(git status --porcelain --untracked-files=no)" || {
+  echo "工作目录有改动，请先处理后再启用。" >&2; exit 1;
+}
+git pull --ff-only
+umask 077
+touch .env
+if ! grep -q '^DEEPTUTOR_UPDATE_TOKEN=' .env; then
+  token=$(openssl rand -hex 32)
+  printf '\nDEEPTUTOR_UPDATE_TOKEN=%s\n' "$token" >> .env
+fi
+export DEEPTUTOR_REPO="$(pwd -P)"
+export DEEPTUTOR_BUILD_REVISION="$(git rev-parse HEAD)"
+docker compose -p "$project" -f compose.yaml -f compose.server.yaml up -d --build --wait
+SETUP
+```
+
+如果服务器只有已经拉好的镜像，没有 Git 工作目录，需要先由管理员将它接入上述源码部署，沿用原数据卷和端口。单独运行的应用容器没有宿主机 Docker 权限，网页无法自行授予该权限。
+
+## Deployment details
 
 Use a dedicated Linux server checkout of the desired Git branch. The branch
 must track its remote, and tracked files must be clean. The updater fetches that
 upstream, permits only fast-forward merges, builds locally and replaces only the
-`deeptutor` service. This deployment uses the fixed Compose project name `lorevia`.
+`deeptutor` service. New deployments default to project `lorevia`; pass the original project name with `-p` when enabling updates on an existing deployment.
 
 Create `.env` in the checkout (keep existing port/data configuration there):
 
@@ -31,7 +74,7 @@ or connect through an SSH tunnel. On first visit, set up the administrator accou
 This override enables authentication; update operations require an administrator.
 Back up an existing deployment before switching its Compose project/data path.
 
-Open **Settings → About → Check now → Update**. Confirming calls the server API,
+Open **Settings → About → Docker updates → Check for new commits → Pull code and rebuild**. Confirming calls the server API,
 which delegates to the updater. The application keeps running during the build,
 then restarts; the UI polls the persisted job across that restart. Settings and
 data remain in the existing data mount. Commit revisions identify code updates

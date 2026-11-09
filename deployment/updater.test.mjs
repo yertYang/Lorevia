@@ -4,10 +4,20 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtemp, writeFile, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { createUpdater } from './updater.mjs';
+import { createUpdater, githubRepository } from './updater.mjs';
 
 const exec = promisify(execFile);
 const token = 'test-update-token-with-at-least-32-characters';
+
+test('repository links support GitHub forks and never expose credentials or local paths', () => {
+  for (const remote of ['https://token:secret@github.com/example/fork.git',
+    'git@github.com:example/fork.git', 'ssh://git@github.com/example/fork']) {
+    assert.equal(githubRepository(remote), 'https://github.com/example/fork');
+  }
+  for (const remote of ['/srv/private', 'https://github.com.other/example/fork', 'https://github.com/../fork']) {
+    assert.equal(githubRepository(remote), null);
+  }
+});
 
 async function fixture(t) {
   const root = await mkdtemp(`${tmpdir()}/lorevia-updater-`);
@@ -34,7 +44,7 @@ async function fixture(t) {
     if (args.includes('up')) deployed = env.DEEPTUTOR_BUILD_REVISION;
     return args.includes('ps') ? 'test-container' : '';
   };
-  const server = await createUpdater({ repo, token, stateDir, run, sleep: async () => {} });
+  const server = await createUpdater({ repo, token, project: 'existing-server', stateDir, run, sleep: async () => {} });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const request = async (path, method = 'GET', body, auth = token) => {
     const res = await fetch(`http://127.0.0.1:${server.address().port}${path}`, {
@@ -77,34 +87,40 @@ test('authenticated check, pinned code deployment, duplicate protection, persist
   // VERSION is unchanged; revision still offers an update.
   assert.equal(checked.body.release.version, checked.body.current_version);
   assert.equal(checked.body.release.revision, target);
-  const release = f.block();
-  assert.equal((await f.request('/update', 'POST')).status, 202);
+  assert.deepEqual(checked.body.source, { branch: 'main', repository: null });
   assert.equal((await f.request('/update', 'POST')).status, 409);
+  assert.equal((await f.request('/update', 'POST', { target_revision: f.initial })).status, 409);
+  const release = f.block();
+  assert.equal((await f.request('/update', 'POST', { target_revision: target })).status, 202);
+  assert.equal((await f.request('/update', 'POST', { target_revision: target })).status, 409);
   release();
   assert.equal((await f.waitJob()).status, 'succeeded');
   const status = (await f.request('/status')).body;
   assert.equal(status.current_revision, target); assert.equal(status.update_available, false);
   assert.equal(f.calls.filter(c => c.args.includes('up')).length, 1);
+  for (const { args } of f.calls.filter(c => c.args[0] === 'compose')) {
+    assert.deepEqual(args.slice(1, 3), ['--project-name', 'existing-server']);
+  }
   assert.equal(JSON.parse(await readFile(`${f.stateDir}/update.json`, 'utf8')).job.status, 'succeeded');
 });
 
 test('build failure leaves deployed application running and reports failure', async t => {
-  const f = await fixture(t); await f.advance(); await f.request('/check', 'POST'); f.failBuild();
-  await f.request('/update', 'POST');
+  const f = await fixture(t); const target = await f.advance(); await f.request('/check', 'POST'); f.failBuild();
+  await f.request('/update', 'POST', { target_revision: target });
   assert.match((await f.waitJob()).error, /Build failed/);
   assert.equal((await f.request('/status')).body.current_revision, f.initial);
   assert.equal(f.calls.filter(c => c.args.includes('up')).length, 0);
 });
 
 test('local edits and changed confirmation target stop deployment', async t => {
-  const f = await fixture(t); await f.advance(); await f.request('/check', 'POST');
+  const f = await fixture(t); const target = await f.advance(); await f.request('/check', 'POST');
   await writeFile(`${f.repo}/VERSION`, 'local-edit\n');
   assert.equal((await f.request('/check', 'POST')).status, 409);
-  await f.request('/update', 'POST');
+  await f.request('/update', 'POST', { target_revision: target });
   assert.match((await f.waitJob()).error, /local changes/);
   await writeFile(`${f.repo}/VERSION`, '1.0.0\n');
   await f.request('/check', 'POST'); await f.advance();
-  await f.request('/update', 'POST');
+  await f.request('/update', 'POST', { target_revision: target });
   assert.match((await f.waitJob()).error, /upstream changed/);
   assert.equal(f.calls.filter(c => c.args.includes('build')).length, 0);
 });

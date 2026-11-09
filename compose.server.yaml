@@ -18,7 +18,7 @@ services:
     environment:
       DEEPTUTOR_REPO: ${DEEPTUTOR_REPO:?Set the absolute server checkout path in .env}
       DEEPTUTOR_UPDATE_TOKEN: ${DEEPTUTOR_UPDATE_TOKEN:?Set a random update token in .env}
-      COMPOSE_PROJECT_NAME: lorevia
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-lorevia}
     volumes:
       - ${DEEPTUTOR_REPO}:${DEEPTUTOR_REPO}
       - /var/run/docker.sock:/var/run/docker.sock

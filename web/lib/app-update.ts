@@ -32,6 +32,7 @@ export interface UpdateJob {
 }
 
 export interface AppUpdateStatus {
+  source?: { branch: string; repository: string | null } | null;
   current_version: string;
   current_revision?: string;
   check_enabled: boolean;

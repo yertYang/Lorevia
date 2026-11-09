@@ -31,5 +31,5 @@
 
 - [Docker 开发环境](docs-for-dev/docker-development.md)
 - [开发环境内存配置](docs-for-dev/development-memory.md)
-- [服务器部署与更新](deployment/README.md)
+- [Docker 服务器更新配置](deployment/README.md)：启用后，管理员可在 **设置 → 关于 → Docker 更新** 从 GitHub 拉取新提交并重建应用。
 - [桌面端自动发布与 GitHub 更新](docs-for-dev/desktop-releases.md)

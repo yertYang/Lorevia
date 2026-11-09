@@ -13,7 +13,15 @@ const active = job => job && ['pending', 'running', 'restarting'].includes(job.s
 const now = () => new Date().toISOString();
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-export async function createUpdater({ repo, token, stateDir = '/state', run, sleep = pause } = {}) {
+// Return only the public repository identity. A remote may contain an HTTPS
+// token, SSH user, or a private filesystem path; never send its raw URL to a client.
+export function githubRepository(remote) {
+  const match = remote.match(/^(?:https:\/\/(?:[^/]*@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/i);
+  return match && [match[1], match[2]].every(part => part !== '.' && part !== '..')
+    ? `https://github.com/${match[1]}/${match[2]}` : null;
+}
+
+export async function createUpdater({ repo, token, project = 'lorevia', stateDir = '/state', run, sleep = pause } = {}) {
   if (!repo || !token || token.length < 32) throw new Error('Absolute DEEPTUTOR_REPO and update token (32+ characters) are required.');
   if (resolve(repo) !== repo) throw new Error('DEEPTUTOR_REPO must be absolute.');
   run ??= async (command, args, env = {}) => {
@@ -29,7 +37,7 @@ export async function createUpdater({ repo, token, stateDir = '/state', run, sle
     }
   };
   const git = (...args) => run('git', ['-c', `safe.directory=${repo}`, ...args]);
-  const compose = (args, env) => run('docker', ['compose', '--project-name', 'lorevia',
+  const compose = (args, env) => run('docker', ['compose', '--project-name', project,
     '--project-directory', repo, '-f', `${repo}/compose.yaml`, '-f', `${repo}/compose.server.yaml`, ...args], env);
   await mkdir(stateDir, { recursive: true });
   const statePath = `${stateDir}/update.json`;
@@ -67,17 +75,23 @@ export async function createUpdater({ repo, token, stateDir = '/state', run, sle
       release: state.checked_at ? { version: targetVersion, revision: target, name: `Server code ${target.slice(0, 12)}`,
         published_at: '', url: '', excerpt: 'Updates the configured Git tracking branch on this server.', migration_warning: false } : null,
       installation: { mode: 'docker', automatic_update: true, command: '', reason: 'Server code updates are managed by Docker Compose.' },
-      launcher_managed: true, is_admin: true, job: state.job,
+      source: state.source || null, launcher_managed: true, is_admin: true, job: state.job,
     };
   }
   async function check() {
     if (!state.enabled) throw new Error('Version checks are disabled.');
     if ((await git('status', '--porcelain', '--untracked-files=no')).trim()) throw new Error('Server checkout has local changes. Commit or remove them before updating.');
-    await git('fetch', '--prune');
+    const branch = await git('symbolic-ref', '--short', 'HEAD');
+    const remote = await git('config', '--get', `branch.${branch}.remote`);
+    const tracking = await git('config', '--get', `branch.${branch}.merge`);
+    if (remote === '.' || !tracking.startsWith('refs/heads/')) throw new Error('Configure a remote tracking branch for server updates.');
+    const repository = githubRepository(await git('remote', 'get-url', '--', remote));
+    await git('fetch', '--prune', '--', remote);
     // A detached checkout or missing upstream fails here, without changing code.
     const target = await git('rev-parse', '@{upstream}');
     await git('merge-base', '--is-ancestor', 'HEAD', target);
     state.target = target;
+    state.source = { branch: tracking.slice('refs/heads/'.length), repository };
     state.checked_at = now();
     state.error = '';
     await save();
@@ -148,7 +162,7 @@ export async function createUpdater({ repo, token, stateDir = '/state', run, sle
           const current = await deployed();
           if (!state.enabled) throw new Error('Version checks are disabled.');
           if (!state.target) throw new Error('Check for updates before starting a deployment.');
-          if (body.target_revision && body.target_revision !== state.target) throw new Error('The checked revision changed. Check and confirm the update again.');
+          if (body.target_revision !== state.target) throw new Error('The checked revision changed. Check and confirm the update again.');
           if (state.target === current) throw new Error('The server code is already up to date.');
           state.job = { id: randomUUID(), status: 'pending', current_version: current, target_version: state.target,
             created_at: now(), started_at: null, finished_at: null, error: null, restart_count: 0 };
@@ -163,6 +177,7 @@ export async function createUpdater({ repo, token, stateDir = '/state', run, sle
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const server = await createUpdater({ repo: process.env.DEEPTUTOR_REPO, token: process.env.DEEPTUTOR_UPDATE_TOKEN });
+  const server = await createUpdater({ repo: process.env.DEEPTUTOR_REPO, token: process.env.DEEPTUTOR_UPDATE_TOKEN,
+    project: process.env.COMPOSE_PROJECT_NAME });
   server.listen(9090, '0.0.0.0');
 }
