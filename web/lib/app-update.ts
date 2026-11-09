@@ -29,6 +29,10 @@ export interface UpdateJob {
   finished_at: string | null;
   error: string | null;
   restart_count: number;
+  stage?: "queued" | "checking" | "pulling" | "building" | "deploying" | "verifying" | "complete" | "failed";
+  progress?: number;
+  updated_at?: string;
+  events?: Array<{ at: string; stage: string; message: string }>;
 }
 
 export interface AppUpdateStatus {

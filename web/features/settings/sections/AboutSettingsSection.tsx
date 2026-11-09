@@ -25,6 +25,7 @@ import {
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import Button from "@/components/ui/Button";
 import DesktopUpdatesPanel from "@/components/settings/DesktopUpdatesPanel";
+import DockerUpdateProgressDialog from "@/components/settings/DockerUpdateProgressDialog";
 import {
   checkAppUpdate,
   AppUpdateUnavailableError,
@@ -71,6 +72,8 @@ export default function AboutSettingsPage() {
   const [checks, setChecks] = useState({ enabled: false });
   const [requesting, setRequesting] = useState(false);
   const [confirmation, setConfirmation] = useState<{ target: string; revision?: string } | null>(null);
+  const [progressOpen, setProgressOpen] = useState(false);
+  const [updateNotice, setUpdateNotice] = useState("");
   const [error, setError] = useState("");
   const [unavailable, setUnavailable] = useState(false);
   const [desktopUpdates, setDesktopUpdates] = useState(false);
@@ -83,6 +86,7 @@ export default function AboutSettingsPage() {
       setUnavailable(false);
       setChecks({ enabled: next.check_enabled });
       setJob(next.job);
+      if (next.job && updateJobIsActive(next.job.status)) setProgressOpen(true);
       setError(next.check_error || "");
     } catch (cause) {
       if (cause instanceof AppUpdateUnavailableError) {
@@ -147,11 +151,15 @@ export default function AboutSettingsPage() {
   const check = useCallback(async () => {
     setChecking(true);
     setError("");
+    setUpdateNotice("");
     try {
       const next = await checkAppUpdate();
       setStatus(next);
       setChecks({ enabled: next.check_enabled });
       setJob(next.job);
+      if (next.installation.mode === "docker" && !next.update_available) {
+        setUpdateNotice(t("The server already has the latest commit."));
+      }
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -177,6 +185,29 @@ export default function AboutSettingsPage() {
     }
   };
 
+  const prepareServerUpdate = useCallback(async () => {
+    setChecking(true);
+    setError("");
+    setUpdateNotice("");
+    try {
+      const next = await checkAppUpdate();
+      setStatus(next);
+      setChecks({ enabled: next.check_enabled });
+      setJob(next.job);
+      if (next.update_available && next.release?.revision) {
+        setConfirmation({ target: next.release.revision.slice(0, 12), revision: next.release.revision });
+      } else if (!next.update_available) {
+        setUpdateNotice(t("The server already has the latest commit."));
+      } else {
+        setError(t("No verified target commit was returned. Check the updater service."));
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t("Unable to check for updates."));
+    } finally {
+      setChecking(false);
+    }
+  }, [t]);
+
   const update = useCallback(async () => {
     if (!confirmation) return;
     setRequesting(true);
@@ -184,6 +215,7 @@ export default function AboutSettingsPage() {
     try {
       const next = await requestAppUpdate(confirmation.revision);
       setJob(next);
+      setProgressOpen(true);
       setConfirmation(null);
     } catch (cause) {
       setConfirmation(null);
@@ -227,6 +259,11 @@ export default function AboutSettingsPage() {
     status.installation.automatic_update &&
     status.launcher_managed &&
     (!serverUpdates || status.release?.revision) && !error && !checking && !requesting && !activeJob,
+  );
+  const canStartServerUpdate = Boolean(
+    serverUpdates && status?.is_admin && status.check_enabled &&
+    status.installation.automatic_update && status.launcher_managed &&
+    !checking && !requesting && !activeJob && !savingChecks,
   );
   const upToDate = Boolean(status?.release && !status.update_available);
 
@@ -376,17 +413,21 @@ export default function AboutSettingsPage() {
               {t(serverUpdates ? "Check for new commits" : "Check now")}
             </Button>
           )}
-          {canUpdate && (
+          {(canStartServerUpdate || (!serverUpdates && canUpdate)) && (
             <Button
               type="button"
               size="sm"
+              className={serverUpdates ? "bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800" : undefined}
               icon={<Download className="h-3.5 w-3.5" />}
-              onClick={() => setConfirmation({ target: updateTarget, revision: status.release?.revision })}
+              onClick={() => serverUpdates
+                ? void prepareServerUpdate()
+                : setConfirmation({ target: updateTarget, revision: status.release?.revision })}
             >
-              {serverUpdates ? t("Pull code and rebuild") : t("Update to {{version}}", { version: updateTarget })}
+              {serverUpdates ? t("Start update") : t("Update to {{version}}", { version: updateTarget })}
             </Button>
           )}
         </div>
+        {serverUpdates && updateNotice && <p role="status" className="pb-4 text-xs text-emerald-700 dark:text-emerald-400">{updateNotice}</p>}
 
         {status?.release?.migration_warning && (
           <div className="flex items-start gap-2 border-t border-[var(--border)]/50 py-3.5 text-[12.5px] leading-relaxed text-amber-700 dark:text-amber-400">
@@ -445,6 +486,7 @@ export default function AboutSettingsPage() {
                 {job.error}
               </p>
             )}
+            {serverUpdates && <button type="button" onClick={() => setProgressOpen(true)} className="mt-2 text-xs font-medium text-emerald-700 underline dark:text-emerald-400">{t("View deployment progress")}</button>}
           </div>
         )}
       </SettingSection>}
@@ -533,6 +575,7 @@ export default function AboutSettingsPage() {
           : "DeepTutor will briefly stop, install {{version}}, and reopen with the same settings. Active conversations must finish first.",
           { version: confirmation?.target })}
       </ConfirmDialog>
+      {progressOpen && <DockerUpdateProgressDialog job={job} branch={status?.source?.branch} onClose={() => setProgressOpen(false)} />}
     </div>
   );
 }

@@ -51,8 +51,10 @@ export async function createUpdater({ repo, token, project = 'lorevia', stateDir
   };
   if (active(state.job)) {
     state.job.status = 'failed';
+    state.job.stage = 'failed';
     state.job.error = 'Updater restarted during deployment. Check container health and retry.';
     state.job.finished_at = now();
+    state.job.updated_at = state.job.finished_at;
     await save();
   }
   let busy = false;
@@ -97,32 +99,45 @@ export async function createUpdater({ repo, token, project = 'lorevia', stateDir
     await save();
   }
   async function perform() {
+    const mark = async (stage, progress, message, status = 'running') => {
+      const at = now();
+      Object.assign(state.job, { status, stage, progress, updated_at: at });
+      state.job.events.push({ at, stage, message });
+      await save();
+    };
     try {
-      state.job.status = 'running'; state.job.started_at = now(); await save();
+      state.job.started_at = now();
+      await mark('checking', 8, 'Checking the GitHub branch and local checkout.');
       // Recheck even if the browser inspected a cached revision. Never reset or
       // discard server changes; merge only to the exact inspected upstream SHA.
       await check();
       if (state.job.target_version !== state.target) throw new Error('The upstream changed since the last check. Check and confirm the new revision before retrying.');
+      await mark('pulling', 22, 'Applying the verified GitHub commit.');
       await git('merge', '--ff-only', state.target);
       const env = { DEEPTUTOR_BUILD_REVISION: state.target };
+      await mark('building', 38, 'Building the application image.');
       await compose(['build', 'deeptutor'], env);
-      state.job.status = 'restarting'; await save();
+      await mark('deploying', 76, 'Replacing the application container.', 'restarting');
       await compose(['up', '-d', '--no-deps', '--no-build', '--force-recreate', 'deeptutor'], env);
+      await mark('verifying', 90, 'Waiting for the new container to become healthy.', 'restarting');
       for (let attempt = 0; attempt < 120; attempt++) {
         const id = await compose(['ps', '-q', 'deeptutor']);
         if (id) {
           const health = await run('docker', ['inspect', '--format', '{{.State.Health.Status}}', id]);
           if (health === 'healthy' && await deployed() === state.target) {
-            state.job.status = 'succeeded'; state.job.restart_count = 1;
-            state.job.finished_at = now(); await save(); return;
+            state.job.restart_count = 1;
+            state.job.finished_at = now();
+            await mark('complete', 100, 'Deployment passed its health check.', 'succeeded');
+            return;
           }
         }
         await sleep(2000);
       }
       throw new Error('New application did not become healthy within four minutes. Inspect the container logs.');
     } catch (error) {
-      state.job.status = 'failed'; state.job.error = error.message;
-      state.job.finished_at = now(); await save();
+      state.job.error = error.message;
+      state.job.finished_at = now();
+      await mark('failed', state.job.progress ?? 0, error.message, 'failed');
     } finally { busy = false; }
   }
   const server = createServer(async (req, res) => {
@@ -165,7 +180,9 @@ export async function createUpdater({ repo, token, project = 'lorevia', stateDir
           if (body.target_revision !== state.target) throw new Error('The checked revision changed. Check and confirm the update again.');
           if (state.target === current) throw new Error('The server code is already up to date.');
           state.job = { id: randomUUID(), status: 'pending', current_version: current, target_version: state.target,
-            created_at: now(), started_at: null, finished_at: null, error: null, restart_count: 0 };
+            created_at: now(), started_at: null, finished_at: null, updated_at: now(),
+            stage: 'queued', progress: 2, events: [{ at: now(), stage: 'queued', message: 'Update accepted.' }],
+            error: null, restart_count: 0 };
           await save(); send(202, state.job);
           void perform(); return;
         } catch (error) { busy = false; throw error; }

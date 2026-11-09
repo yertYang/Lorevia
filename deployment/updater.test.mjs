@@ -93,8 +93,21 @@ test('authenticated check, pinned code deployment, duplicate protection, persist
   const release = f.block();
   assert.equal((await f.request('/update', 'POST', { target_revision: target })).status, 202);
   assert.equal((await f.request('/update', 'POST', { target_revision: target })).status, 409);
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const { body } = await f.request('/job');
+    if (body.stage === 'building') {
+      assert.equal(body.progress, 38);
+      assert.deepEqual(body.events.map(event => event.stage), ['queued', 'checking', 'pulling', 'building']);
+      break;
+    }
+    if (attempt === 99) assert.fail('Build progress was not published');
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
   release();
-  assert.equal((await f.waitJob()).status, 'succeeded');
+  const completed = await f.waitJob();
+  assert.equal(completed.status, 'succeeded');
+  assert.equal(completed.progress, 100);
+  assert.deepEqual(completed.events.slice(-3).map(event => event.stage), ['deploying', 'verifying', 'complete']);
   const status = (await f.request('/status')).body;
   assert.equal(status.current_revision, target); assert.equal(status.update_available, false);
   assert.equal(f.calls.filter(c => c.args.includes('up')).length, 1);
@@ -107,7 +120,10 @@ test('authenticated check, pinned code deployment, duplicate protection, persist
 test('build failure leaves deployed application running and reports failure', async t => {
   const f = await fixture(t); const target = await f.advance(); await f.request('/check', 'POST'); f.failBuild();
   await f.request('/update', 'POST', { target_revision: target });
-  assert.match((await f.waitJob()).error, /Build failed/);
+  const failed = await f.waitJob();
+  assert.match(failed.error, /Build failed/);
+  assert.equal(failed.stage, 'failed');
+  assert.equal(failed.progress, 38);
   assert.equal((await f.request('/status')).body.current_revision, f.initial);
   assert.equal(f.calls.filter(c => c.args.includes('up')).length, 0);
 });

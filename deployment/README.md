@@ -1,6 +1,6 @@
 # 从 GitHub 更新 Docker 服务
 
-在服务器上使用 Lorevia 的独立 Git 工作目录，并让部署分支跟踪 GitHub 上的目标分支（默认是 `origin/master`）。管理员可以在 **设置 → 关于 → Docker 更新** 点击 **检查新提交**，核对仓库、分支、当前提交和目标提交，再点 **拉取代码并重建**。只检查不会修改工作目录或重启应用。即使版本号未变，也能按提交更新。
+在服务器上使用 Lorevia 的独立 Git 工作目录，并让部署分支跟踪 GitHub 上的目标分支（默认是 `origin/master`）。首次接入后，管理员在 **设置 → 关于 → Docker 更新** 点击 **开始更新**：系统先核对 GitHub 分支、服务器本地改动和目标提交，再弹出部署确认。确认后会自动拉取代码、构建镜像、替换应用容器并等待健康检查。界面显示阶段进度和最近操作；关闭进度窗口后部署仍会继续。只点击 **检查新提交** 不会修改工作目录或重启应用。即使版本号未变，也能按提交更新。
 
 **首次启用**：已有部署先备份数据，确认原有数据目录和端口；新部署可从 `https://github.com/yertYang/Lorevia.git` 克隆。请在服务器工作目录的 `.env` 中配置 `DEEPTUTOR_REPO`（工作目录的绝对路径）、`DEEPTUTOR_UPDATE_TOKEN`（用 `openssl rand -hex 32` 生成）、`DEEPTUTOR_DATA_DIR` 和 `HOST_PORT_FRONTEND`。新部署默认使用项目名 `lorevia`；接入现有部署时，使用原来的项目名、数据目录和端口，不要同时启动两个实例。
 
@@ -74,7 +74,7 @@ or connect through an SSH tunnel. On first visit, set up the administrator accou
 This override enables authentication; update operations require an administrator.
 Back up an existing deployment before switching its Compose project/data path.
 
-Open **Settings → About → Docker updates → Check for new commits → Pull code and rebuild**. Confirming calls the server API,
+Open **Settings → About → Docker updates → Start update → Confirm**. The first click checks the tracked GitHub branch and local checkout. Confirming calls the server API,
 which delegates to the updater. The application keeps running during the build,
 then restarts; the UI polls the persisted job across that restart. Settings and
 data remain in the existing data mount. Commit revisions identify code updates
