@@ -7,14 +7,14 @@
 **[查看最新正式版及全部安装包](https://github.com/yertYang/Lorevia/releases/latest)** · [历史版本与发布说明](https://github.com/yertYang/Lorevia/releases)
 
 <!-- desktop-downloads:start -->
-当前最新正式版为 **[v1.7.3](https://github.com/yertYang/Lorevia/releases/tag/v1.7.3)**，发布于 2026 年 11 月 5 日。请选择适合自己设备的安装包：
+当前最新正式版为 **[v1.7.4](https://github.com/yertYang/Lorevia/releases/tag/v1.7.4)**，发布于 2026-11-09。请选择适合自己设备的安装包：
 
-| 操作系统 | 适用设备 | 下载 v1.7.3 |
+| 操作系统 | 适用设备 | 下载 v1.7.4 |
 | --- | --- | --- |
-| macOS | Apple Silicon（M 系列芯片） | [下载 DMG](https://github.com/yertYang/Lorevia/releases/download/v1.7.3/Lorevia-MacOS-Apple-Silicon-v1.7.3.dmg) |
-| macOS | Intel 芯片 | [下载 DMG](https://github.com/yertYang/Lorevia/releases/download/v1.7.3/Lorevia-MacOS-Intel-v1.7.3.dmg) |
-| Windows | x64 安装版 | [下载 Setup.exe](https://github.com/yertYang/Lorevia/releases/download/v1.7.3/Lorevia-Windows-v1.7.3-Setup.exe) |
-| Windows | x64 便携版 | [下载 Portable.zip](https://github.com/yertYang/Lorevia/releases/download/v1.7.3/Lorevia-Windows-v1.7.3-Portable.zip) |
+| macOS | Apple Silicon（M 系列芯片） | [下载 DMG](https://github.com/yertYang/Lorevia/releases/download/v1.7.4/Lorevia-MacOS-Apple-Silicon-v1.7.4.dmg) |
+| macOS | Intel 芯片 | [下载 DMG](https://github.com/yertYang/Lorevia/releases/download/v1.7.4/Lorevia-MacOS-Intel-v1.7.4.dmg) |
+| Windows | x64 安装版 | [下载 Setup.exe](https://github.com/yertYang/Lorevia/releases/download/v1.7.4/Lorevia-Windows-v1.7.4-Setup.exe) |
+| Windows | x64 便携版 | [下载 Portable.zip](https://github.com/yertYang/Lorevia/releases/download/v1.7.4/Lorevia-Windows-v1.7.4-Portable.zip) |
 <!-- desktop-downloads:end -->
 
 ### 安装说明
