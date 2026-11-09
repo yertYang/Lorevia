@@ -75,10 +75,10 @@ pub fn select(
     if let Some(tools) = explicit
         && tools
             .iter()
-            .any(|t| t != "web_search" && t != "browser_test")
+            .any(|t| t != "web_search" && t != "browser_test" && t != "videogen")
     {
         return Err(Error::unsupported(
-            "Only web_search and browser_test are available optional native tools.",
+            "Only web_search, videogen and browser_test are available optional native tools.",
         ));
     }
     let enabled = enabled

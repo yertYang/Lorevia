@@ -13,6 +13,7 @@ export interface VideoLessonResult {
   code: string;
   durationSeconds: number | null;
   attempts: number;
+  captionsOnly: boolean;
 }
 
 /** The lesson page and its metadata from a ``video_lesson`` result event, or null. */
@@ -47,6 +48,7 @@ export function extractVideoLessonResult(
     page,
     code,
     durationSeconds: Number.isFinite(duration) && duration > 0 ? duration : null,
+    captionsOnly: render.narration === "captions_only",
     attempts: Array.isArray(render.attempts) ? render.attempts.length : 0,
   };
 }

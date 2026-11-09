@@ -28,6 +28,7 @@ on:
       - apps/desktop/**
       - web/**
       - packages/browser-testing/**
+      - packages/video-lesson/**
       - rust/**
       - Cargo.toml
       - Cargo.lock

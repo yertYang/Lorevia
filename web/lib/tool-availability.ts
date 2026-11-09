@@ -20,6 +20,11 @@ export function toolAvailabilityCopy(
   reason: string | null | undefined,
   language: ToolAvailabilityLanguage,
 ): ToolAvailabilityCopy {
+  if (reason === "video_provider_not_configured") {
+    return language === "zh"
+      ? { badge: "未配置", detail: "请在多模态设置中选择视频生成模型，并应用设置。", href: "/settings/multimodal" }
+      : { badge: "Not configured", detail: "Select and apply a video generation model in multimodal settings.", href: "/settings/multimodal" };
+  }
   if (reason === "search_provider_not_configured") {
     return language === "zh"
       ? {

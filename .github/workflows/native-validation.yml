@@ -7,6 +7,9 @@ on:
       - "rust/**"
       - "Cargo.*"
       - "VERSION"
+      - "packages/video-lesson/**"
+      - "scripts/native-video-acceptance.mjs"
+      - "scripts/fixtures/video-qa.mp4.b64"
       - "scripts/native-study-acceptance.mjs"
       - "scripts/native-reading-acceptance.mjs"
       - "scripts/native-web-reading-acceptance.mjs"
@@ -55,6 +58,10 @@ jobs:
         run: cargo test --workspace --locked
       - name: Build native HTTP service
         run: cargo build --locked -p deeptutor-server --bin deeptutor-server
+      - name: Install pinned video lesson runtime
+        run: npm ci --omit=dev --prefix packages/video-lesson
+      - name: Exercise lessons and generated clips with synthetic providers
+        run: node scripts/native-video-acceptance.mjs
       - name: Exercise isolated study workflows with a synthetic provider
         env:
           OCR_QA: ${{ runner.os == 'macOS' && '1' || '0' }}

@@ -63,6 +63,7 @@ pub fn router() -> Router<App> {
             "/api/settings/enabled-tools",
             get(enabled_tool_status).put(enabled_tools),
         )
+        .route("/api/tools", get(crate::video::tool_settings))
         .route("/api/modules", get(modules))
         .merge(crate::diagnostics::router())
         .merge(crate::service_preview::router())
@@ -93,7 +94,7 @@ pub fn interface(settings: &Settings) -> Result<Value> {
             .as_array()
             .into_iter()
             .flatten()
-            .filter(|v| *v == "web_search")
+            .filter(|v| *v == "web_search" || *v == "videogen")
             .cloned()
             .collect::<Vec<_>>()
     );
@@ -144,7 +145,7 @@ fn provider_choices() -> Value {
         {"value":"custom","label":"Custom (OpenAI-compatible audio)","base_url":"","default_model":"","requires_api_key":false,"status":"supported"},
         {"value":"groq","label":"Groq","base_url":"https://api.groq.com/openai/v1","default_model":"whisper-large-v3-turbo","requires_api_key":true,"status":"supported"}
     ]);
-    json!({"llm":llm,"task":llm,"embedding":[{"value":"openai","label":"OpenAI","base_url":"https://api.openai.com/v1","requires_api_key":true,"status":"supported"},{"value":"custom","label":"Custom (OpenAI-compatible)","base_url":"","requires_api_key":false,"status":"supported"}],"search":[{"value":"tavily","label":"Tavily","base_url":"https://api.tavily.com","requires_api_key":true,"status":"supported"},{"value":"serper","label":"Serper","base_url":"https://google.serper.dev","requires_api_key":true,"status":"supported"},{"value":"searxng","label":"SearXNG","base_url":"","requires_api_key":false,"status":"supported"}],"tts":[{"value":"openai","label":"OpenAI","base_url":"https://api.openai.com/v1","default_model":"tts-1","requires_api_key":true,"status":"supported"},{"value":"custom","label":"Custom (OpenAI-compatible audio)","base_url":"","requires_api_key":false,"status":"supported"}],"stt":stt,"imagegen":[{"value":"openai","label":"OpenAI","base_url":"https://api.openai.com/v1","requires_api_key":true,"status":"supported"},{"value":"custom","label":"Custom (OpenAI-compatible)","base_url":"","requires_api_key":false,"status":"supported"}],"videogen":[{"value":"openai","label":"OpenAI","base_url":"https://api.openai.com/v1","requires_api_key":true,"status":"supported"},{"value":"custom","label":"Custom (OpenAI-compatible)","base_url":"","requires_api_key":false,"status":"supported"}]})
+    json!({"llm":llm,"task":llm,"embedding":[{"value":"openai","label":"OpenAI","base_url":"https://api.openai.com/v1","requires_api_key":true,"status":"supported"},{"value":"custom","label":"Custom (OpenAI-compatible)","base_url":"","requires_api_key":false,"status":"supported"}],"search":[{"value":"tavily","label":"Tavily","base_url":"https://api.tavily.com","requires_api_key":true,"status":"supported"},{"value":"serper","label":"Serper","base_url":"https://google.serper.dev","requires_api_key":true,"status":"supported"},{"value":"searxng","label":"SearXNG","base_url":"","requires_api_key":false,"status":"supported"}],"tts":[{"value":"openai","label":"OpenAI","base_url":"https://api.openai.com/v1","default_model":"tts-1","requires_api_key":true,"status":"supported"},{"value":"custom","label":"Custom (OpenAI-compatible audio)","base_url":"","requires_api_key":false,"status":"supported"}],"stt":stt,"imagegen":[{"value":"openai","label":"OpenAI","base_url":"https://api.openai.com/v1","requires_api_key":true,"status":"supported"},{"value":"custom","label":"Custom (OpenAI-compatible)","base_url":"","requires_api_key":false,"status":"supported"}],"videogen":[{"value":"volcengine","label":"Volcengine Seedance","base_url":"https://ark.cn-beijing.volces.com/api/v3","requires_api_key":true,"status":"supported"},{"value":"dashscope","label":"DashScope Wan","base_url":"https://dashscope.aliyuncs.com/api/v1","requires_api_key":true,"status":"supported"},{"value":"xai","label":"xAI","base_url":"https://api.x.ai/v1","requires_api_key":true,"status":"supported"},{"value":"openai","label":"OpenAI","base_url":"https://api.openai.com/v1","requires_api_key":true,"status":"supported"},{"value":"custom","label":"Custom (OpenAI-compatible)","base_url":"","requires_api_key":false,"status":"supported"}]})
 }
 async fn ui(State(app): State<App>) -> Result<Json<Value>> {
     let settings = app.settings.clone();
@@ -291,6 +292,12 @@ async fn apply(State(app): State<App>, body: Option<Json<Value>>) -> Result<Json
                         return Err(Error::conflict("Apply the pending UI settings before applying the catalog; the draft was preserved."));
                     }
                 },
+                "tools" => {
+                    let live=interface(&settings)?;
+                    if !payload["enabled_tools"].is_array() || payload["enabled_tools"]!=live["enabled_optional_tools"] {
+                        return Err(Error::conflict("Apply the pending tool switches before applying the catalog; the draft was preserved."));
+                    }
+                },
                 // Layout is owned by browser storage; the frontend applies it
                 // before calling this catalog endpoint.
                 "ui-layout" if payload=="classic" || payload=="modern" => {},
@@ -384,6 +391,20 @@ async fn apply_registry(State(app): State<App>, Json(edit): Json<Value>) -> Resu
 async fn modules(State(app): State<App>) -> Json<Value> {
     let mut value: Value = serde_json::from_str(include_str!("../assets/modules.json"))
         .expect("checked module inventory");
+    if let Some(module) = value["modules"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|m| m["id"] == "video-lesson")
+    {
+        let ready = crate::video::lesson_available();
+        for key in ["installed", "enabled", "ready"] {
+            module[key] = json!(ready);
+        }
+        if !ready {
+            module["issues"] = json!(["Video lesson runtime dependencies are missing."]);
+        }
+    }
     if let Some(knowledge) = value["modules"]
         .as_array_mut()
         .unwrap()
@@ -456,10 +477,8 @@ pub fn probe_secrets(settings: &Settings, body: &Value) -> Result<Value> {
 async fn enabled_tools(State(app): State<App>, Json(body): Json<Value>) -> Result<Json<Value>> {
     let tools = body["enabled_tools"]
         .as_array()
-        .filter(|ts| ts.len() <= 1 && ts.iter().all(|t| t == "web_search"))
-        .ok_or_else(|| {
-            Error::invalid("Only web_search is available in native optional tool settings.")
-        })?
+        .filter(|ts| ts.len() <= 2 && ts.iter().all(|t| t == "web_search" || t == "videogen"))
+        .ok_or_else(|| Error::invalid("Select web_search or videogen in optional tool settings."))?
         .clone();
     let settings = app.settings.clone();
     blocking(move || {

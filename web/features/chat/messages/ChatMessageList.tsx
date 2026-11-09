@@ -70,6 +70,7 @@ import {
   SPEECH_TIMEOUT_MESSAGE,
 } from "@/lib/voice-settings";
 import { extractMathAnimatorResult } from "@/lib/math-animator-types";
+import { toolResultMetadata } from "@/lib/tool-event";
 import { extractVideoLessonResult } from "@/lib/video-lesson-types";
 import {
   extractQuizQuestions,
@@ -688,6 +689,11 @@ export function GeneratedFileCards({
                   {t("Open")}
                 </span>
               </button>
+              {a.url?.startsWith("/api/video/artifacts/") && (
+                <a href={mediaSrc} download={filename} className="inline-block px-3 pb-2 text-xs underline">
+                  {t("Download")}
+                </a>
+              )}
               {supportsGeneratedOutputActions(a) ? (
                 <GeneratedOutputFileActions url={a.url || ""} />
               ) : null}
@@ -876,6 +882,11 @@ export const AssistantMessage = memo(function AssistantMessage({
     // Ignore earlier intermediate results that do not carry a playable page.
     for (let index = events.length - 1; index >= 0; index -= 1) {
       const event = events[index];
+      if (event.type === "tool_result" && event.metadata?.tool_name === "render_video_lesson") {
+        const payload = toolResultMetadata(event.metadata)?.video_lesson;
+        const lesson = extractVideoLessonResult(payload as Record<string, unknown> | undefined);
+        if (lesson) return lesson;
+      }
       if (event.type !== "result" ||
           (event.source !== "video_lesson" && msg.capability !== "video_lesson")) continue;
       const lesson = extractVideoLessonResult(event.metadata);

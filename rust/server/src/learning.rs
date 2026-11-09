@@ -18,6 +18,10 @@ pub const SLOTS: [&str; 4] = ["recent", "profile", "scope", "preferences"];
 pub struct ToolFlags {
     #[serde(default)]
     pub allowed_tools: Option<Vec<String>>,
+    #[serde(default)]
+    pub video_lesson: bool,
+    #[serde(default)]
+    pub videogen: Option<crate::video::Selection>,
     pub notebooks: bool,
     pub memory: bool,
     #[serde(default)]
@@ -33,6 +37,7 @@ pub struct ToolFlags {
 }
 #[derive(Clone, Debug)]
 pub enum Mutation {
+    Video(crate::video::Artifact),
     Study(crate::study::Mutation),
     Browser(crate::browser_testing::Mutation),
     SaveFavorite {
@@ -376,6 +381,7 @@ pub fn restore_memory(
 }
 pub fn apply(conn: &Connection, scope: &str, id: &str, mutation: Mutation) -> Result<Value> {
     match mutation {
+        Mutation::Video(artifact) => crate::video::publish(conn, scope, id, artifact),
         Mutation::Study(mutation) => crate::study::apply(conn, scope, mutation),
         Mutation::Browser(mutation) => crate::browser_testing::apply(conn, scope, id, mutation),
         Mutation::SaveFavorite {
@@ -586,6 +592,8 @@ fn flags(conn: &Connection, scope: &str) -> Result<ToolFlags> {
         allowed_tools: None,
         notebooks,
         memory,
+        video_lesson: false,
+        videogen: None,
         knowledge_bases: Vec::new(),
         search: None,
         browser: None,

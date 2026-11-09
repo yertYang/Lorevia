@@ -71,13 +71,14 @@ fn managed(value: &Value) -> bool {
         || !text(value, "managed_by").is_empty()
         || value["read_only"] == true
 }
-fn llm_service(edit: &Value) -> Result<()> {
-    if edit["service"] != "llm" {
+fn model_service(edit: &Value) -> Result<&str> {
+    let service = text(edit, "service");
+    if !matches!(service, "llm" | "videogen") {
         return Err(Error::unsupported(
             "Scoped settings for this service have not yet been migrated.",
         ));
     }
-    Ok(())
+    Ok(service)
 }
 pub fn registry(current: &Value, edit: &Value, draft: &Value) -> Result<Value> {
     if !edit.is_object() {
@@ -166,7 +167,7 @@ pub fn registry(current: &Value, edit: &Value, draft: &Value) -> Result<Value> {
             }
         }
         "model" | "default" => {
-            llm_service(edit)?;
+            let service = model_service(edit)?;
             let profile_id = text(edit, "profile_id");
             if profile_id.is_empty() {
                 return Err(Error::invalid("A model profile ID is required."));
@@ -177,7 +178,7 @@ pub fn registry(current: &Value, edit: &Value, draft: &Value) -> Result<Value> {
             }
             let reference = model.get("provider_ref");
             let owner = reference.map(|r| source(&result, r).cloned()).transpose()?;
-            let mut profile = result["services"]["llm"]["profiles"]
+            let mut profile = result["services"][service]["profiles"]
                 .as_array()
                 .into_iter()
                 .flatten()
@@ -233,7 +234,7 @@ pub fn registry(current: &Value, edit: &Value, draft: &Value) -> Result<Value> {
                 }
             } else if deleting {
                 let task = &result["services"]["task"];
-                if uses_model(task, profile_id, &model_id) {
+                if service == "llm" && uses_model(task, profile_id, &model_id) {
                     return Err(Error::invalid(
                         "Reassign background tasks before deleting this model.",
                     ));
@@ -272,7 +273,7 @@ pub fn registry(current: &Value, edit: &Value, draft: &Value) -> Result<Value> {
                 }
             }
             let empty = models.is_empty();
-            let bucket = &mut result["services"]["llm"];
+            let bucket = &mut result["services"][service];
             if deleting && empty && inherited {
                 bucket["profiles"]
                     .as_array_mut()

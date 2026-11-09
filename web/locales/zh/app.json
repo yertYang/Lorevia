@@ -6259,6 +6259,7 @@
   "Dito brings {{name}} into the discussion here, beside the conversation.": "Dito 会在这里请{{name}}一起讨论，和主对话分开。",
   "A conversation with Dito beside the main one. Nothing asked here is added to it.": "在主对话旁边和 Dito 单独聊。这里问的内容不会加进主对话。",
   "Some conversations are waiting for recovery. Their existing data has been kept.": "部分对话正在等待恢复，已有数据已保留。",
+  "Captions only": "仅字幕",
   "Video Lesson": "视频讲解",
   "Turn a question into an animated explainer you can play": "把问题做成可以播放的讲解动画",
   "View Remotion Code": "查看 Remotion 代码",

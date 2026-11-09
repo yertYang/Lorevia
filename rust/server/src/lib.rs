@@ -23,6 +23,7 @@ mod speech;
 mod speech_text;
 pub mod store;
 mod update_api;
+mod video;
 mod voice;
 
 pub use application::Application;

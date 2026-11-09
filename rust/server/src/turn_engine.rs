@@ -29,6 +29,8 @@ pub struct EngineState {
     pub user_replies: Vec<Value>,
     #[serde(default)]
     pub study_phase: u8,
+    #[serde(default)]
+    pub lesson_published: bool,
 }
 impl EngineState {
     pub fn new(history: Vec<Value>) -> Self {
@@ -38,6 +40,7 @@ impl EngineState {
             base_history,
             user_replies: Vec::new(),
             study_phase: 0,
+            lesson_published: false,
             asked: false,
             solve: Default::default(),
             history,
@@ -50,6 +53,7 @@ impl EngineState {
             return Some("study_plan");
         }
         match capability {
+            Capability::VideoLesson if !self.lesson_published => Some("render_video_lesson"),
             Capability::AskQuestions if !self.asked => Some("ask_user"),
             Capability::DeepSolve if self.solve.steps.is_empty() => Some("solve_plan"),
             _ => None,
@@ -206,7 +210,7 @@ pub async fn run(
                 }
             } else {
                 registry
-                    .execute(&call, &mut engine.solve, &engine.tools)
+                    .execute(&call, &invocation, &mut engine.solve, &engine.tools)
                     .await
             };
             let (ack, committed) = oneshot::channel();
@@ -221,6 +225,27 @@ pub async fn run(
             let result = committed
                 .await
                 .map_err(|_| Error::conflict("Tool completion was interrupted."))??;
+            if call.name == "render_video_lesson" {
+                if result["success"] == true {
+                    engine.lesson_published = true;
+                } else if capability == Capability::VideoLesson
+                    && (engine.rounds >= 3
+                        || !matches!(
+                            result["error"].as_str(),
+                            Some(
+                                "invalid_request"
+                                    | "lesson_compile"
+                                    | "lesson_render"
+                                    | "lesson_bundle"
+                            )
+                        ))
+                {
+                    return Err(Error::provider(format!(
+                        "Video lesson failed: {}",
+                        crate::store::text(&result, "content")
+                    )));
+                }
+            }
             if result["success"] == true && capability.is_study() {
                 if call.name == "study_plan" {
                     engine.study_phase = 1;

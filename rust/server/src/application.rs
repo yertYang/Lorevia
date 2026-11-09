@@ -265,6 +265,17 @@ impl Application {
         let reading_target = request["reading_target"].clone();
         let flags = blocking(move || {
             let mut flags = crate::learning::bootstrap(&settings, &scoped_store, &scope)?;
+            if matches!(capability, Capability::Chat | Capability::VideoLesson) {
+                flags.video_lesson = crate::video::lesson_available();
+                if capability == Capability::VideoLesson && !flags.video_lesson {
+                    return Err(Error::unsupported(
+                        "The video lesson runtime is missing. Install a complete Lorevia runtime.",
+                    ));
+                }
+                if capability == Capability::Chat {
+                    flags.videogen = crate::video::select(&settings, &enabled, &optional)?;
+                }
+            }
             flags.search = crate::search::select(&settings, &enabled, &optional)?;
             flags.browser = if capability == Capability::TestCases {
                 Some(crate::browser_testing::test_selection(
@@ -309,6 +320,10 @@ impl Application {
                 if !account_policy.is_null() {
                     flags = Default::default();
                 } else if let Some(tools) = grant["enabled_tools"].as_array() {
+                    flags.videogen = flags
+                        .videogen
+                        .filter(|_| tools.iter().any(|t| t == "videogen"));
+                    flags.video_lesson &= tools.iter().any(|t| t == "render_video_lesson");
                     flags.allowed_tools = Some(
                         tools
                             .iter()
@@ -328,6 +343,11 @@ impl Application {
                         flags.knowledge_bases.clear();
                     }
                 }
+            }
+            if capability == Capability::VideoLesson && !flags.video_lesson {
+                return Err(Error::invalid(
+                    "Video lessons are not enabled for this account.",
+                ));
             }
             if flags.proposal.is_some() {
                 flags.notebooks = false;
@@ -483,6 +503,7 @@ impl Application {
                 tx,
             );
             tokio::pin!(future);
+            let mut media_remaining = None;
             let mut provider_result: Option<Result<()>> = None;
             loop {
                 tokio::select! {
@@ -535,6 +556,11 @@ impl Application {
                                 self.metrics.request(&admission.turn, &request_id, &trace_id, http_status);
                             },
                             Some(Delta::ToolStart { invocation, call, ack })=>{
+                                if matches!(call.name.as_str(),"render_video_lesson"|"videogen") {
+                                    let now=tokio::time::Instant::now();
+                                    media_remaining=Some(deadline.deadline().saturating_duration_since(now));
+                                    deadline.as_mut().reset(now+Duration::from_secs(610));
+                                }
                                 let result=async {
                                     batch.flush(self,&admission.turn,&mut content).await?;
                                     let store=self.store.clone();let turn=admission.turn.clone();
@@ -546,6 +572,7 @@ impl Application {
                                 if failed {status="failed";failure=Some("Tool admission could not be persisted.".into());break;}
                             },
                             Some(Delta::ToolEnd { invocation, result, ack })=>{
+                                if let Some(remaining)=media_remaining.take() {deadline.as_mut().reset(tokio::time::Instant::now()+remaining);}
                                 let store=self.store.clone();let turn=admission.turn.clone();
                                 let result=blocking(move || store.commit_tool(&turn,&invocation,result)).await;
                                 let failed=result.is_err();

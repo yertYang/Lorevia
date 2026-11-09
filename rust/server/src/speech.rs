@@ -307,6 +307,23 @@ fn draft_model(app: &Application, body: &Value, kind: &str) -> Result<SpeechMode
     resolve(&catalog, body, kind)
 }
 
+/// An absent voice service leaves captions enabled. Request WAV so the timeline
+/// can use the recorded duration instead of estimating when a scene ends.
+pub(crate) async fn lesson_voice(catalog: &Value, input: &str) -> Result<Option<Vec<u8>>> {
+    let mut model = match resolve(catalog, &Value::Null, "tts") {
+        Ok(m) => m,
+        Err(e) if e.code == "tts_not_configured" => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    model.format = "wav".into();
+    let response = synthesize(model, input, 1200).await?;
+    Ok(Some(
+        axum::body::to_bytes(response.into_body(), 4 * 1024 * 1024)
+            .await
+            .map_err(|_| Error::provider("Lesson narration exceeds its size limit."))?
+            .to_vec(),
+    ))
+}
 async fn playback(
     State(app): State<Arc<Application>>,
     Json(body): Json<Value>,

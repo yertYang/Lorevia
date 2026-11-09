@@ -61,6 +61,7 @@ if (!assembleOnly) {
   run(process.env.CARGO || 'cargo', ['run', '--locked', '--release', '-p', 'deeptutor-build', '--', '--target', rustTarget(target), '--output', path.join(build, 'native'), '--target-dir', path.join(target.local, 'cargo-target')], { cwd: build });
   npm(['ci', '--legacy-peer-deps'], path.join(build, 'web'));
   npm(['run', 'build'], path.join(build, 'web'));
+  npm(['ci', '--omit=dev'], path.join(build, 'packages/video-lesson'));
   const browser = path.join(build, 'packages/browser-testing');
   npm(['ci', '--omit=dev', '--ignore-scripts'], browser);
   run(target.nodeBin, [path.join(browser, 'node_modules/playwright/cli.js'), 'install', '--no-shell', 'chromium'], {
@@ -73,6 +74,7 @@ await mkdir(path.join(runtime, 'core'), { recursive: true });
 for (const name of ['native', 'VERSION', 'LICENSE', 'THIRD_PARTY_NOTICES.txt']) {
   await cp(path.join(build, name), path.join(runtime, 'core', name), { recursive: true });
 }
+await cp(path.join(build, 'packages/video-lesson'), path.join(runtime, 'core/video-lesson'), { recursive: true, verbatimSymlinks: true });
 await cp(path.join(build, 'packages/browser-testing'), path.join(runtime, 'core/browser-testing'), {
   recursive: true, verbatimSymlinks: true,
   filter: file => !path.relative(path.join(build, 'packages/browser-testing'), file).split(path.sep).some(part => part === 'test'),

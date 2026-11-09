@@ -28,6 +28,7 @@ services:
       - .:/workspace
       - web-deps:/workspace/web/node_modules
       - web-cache:/workspace/web/.next-docker
+      - video-deps:/workspace/packages/video-lesson/node_modules
       - browser-deps:/workspace/packages/browser-testing/node_modules
       - cargo-target:/workspace/target
       - cargo-registry:/usr/local/cargo/registry
@@ -53,6 +54,10 @@ services:
         - action: restart
           path: ./packages/browser-testing/package-lock.json
         - action: restart
+          path: ./packages/video-lesson/package-lock.json
+        - action: restart
+          path: ./packages/video-lesson/package.json
+        - action: restart
           path: ./scripts/docker-dev.sh
         - action: rebuild
           path: ./Dockerfile.dev
@@ -69,6 +74,7 @@ services:
 volumes:
   web-deps:
   web-cache:
+  video-deps:
   browser-deps:
   cargo-target:
   cargo-registry:

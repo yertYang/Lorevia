@@ -5,9 +5,8 @@ use rusqlite::{Connection, OpenFlags};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::path::Path;
-// v8 combines the learning tables and imported browser-source tables from the
-// two v7 branches, so existing deployments take a snapshot before upgrading.
-pub const SCHEMA_VERSION: i64 = 8;
+// v10 persists video artifacts with the turn that produced them.
+pub const SCHEMA_VERSION: i64 = 10;
 pub fn snapshot(conn: &Connection, directory: &Path, label: &str) -> Result<Value> {
     let parent = directory
         .parent()

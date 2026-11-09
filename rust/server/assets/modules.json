@@ -285,13 +285,17 @@
     },
     {
       "id": "video-lesson",
-      "installed": false,
-      "enabled": false,
-      "ready": false,
+      "installed": true,
+      "enabled": true,
+      "ready": true,
       "navigation": [],
-      "issues": [
-        "Not migrated to the independent Rust server."
-      ]
+      "issues": [],
+      "features": {
+        "remotion_player": true,
+        "sample_frame_validation": true,
+        "tts_narration": true,
+        "chat_videogen": true
+      }
     },
     {
       "id": "visualize",

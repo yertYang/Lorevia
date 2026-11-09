@@ -14,6 +14,7 @@ install_deps() {
 }
 install_deps web
 install_deps packages/browser-testing
+install_deps packages/video-lesson
 
 # Compile before starting Next so their startup memory peaks do not overlap.
 cargo build --locked -p deeptutor-server --bin deeptutor-server

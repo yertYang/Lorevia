@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS native_tool_invocations (
  UNIQUE(turn_id,call_id)
 );
 CREATE INDEX IF NOT EXISTS idx_native_tool_turn_status ON native_tool_invocations(turn_id,status);
+CREATE TABLE IF NOT EXISTS native_video_artifacts (
+ id TEXT PRIMARY KEY REFERENCES native_tool_invocations(invocation_id) ON DELETE CASCADE,
+ workspace_id TEXT NOT NULL, mime TEXT NOT NULL, content BLOB NOT NULL
+);
 CREATE TABLE IF NOT EXISTS native_turn_checkpoints (
  turn_id TEXT PRIMARY KEY REFERENCES turns(id) ON DELETE CASCADE,
  phase TEXT NOT NULL, payload_json TEXT NOT NULL

@@ -44,7 +44,7 @@ fn v4_public(ip: Ipv4Addr) -> bool {
         .iter()
         .any(|(base, bits)| n >> (32 - bits) == base >> (32 - bits))
 }
-fn public(ip: IpAddr) -> bool {
+pub(crate) fn public(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(ip) => v4_public(ip),
         IpAddr::V6(ip) => {

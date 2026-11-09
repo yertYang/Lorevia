@@ -57,6 +57,14 @@ pub fn definitions_scoped(
         json!({"name":"session_info","description":"Read the current conversation title, reply language and workspace identifier. Takes no arguments and cannot access other conversations.","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]}}),
         crate::ask_user::definition(),
     ];
+    if capability == Capability::VideoLesson
+        || (capability == Capability::Chat && flags.video_lesson)
+    {
+        tools.push(crate::video::lesson_definition());
+    }
+    if capability == Capability::Chat && flags.videogen.is_some() {
+        tools.push(crate::video::video_definition());
+    }
     if capability == Capability::DeepSolve {
         tools.extend(crate::solve::definitions());
     }
@@ -87,6 +95,7 @@ impl ToolRegistry {
     pub async fn execute(
         &self,
         call: &ToolCall,
+        invocation: &str,
         solve: &mut crate::solve::SolveState,
         flags: &crate::learning::ToolFlags,
     ) -> ToolOutcome {
@@ -103,6 +112,8 @@ impl ToolRegistry {
                     "write_memory",
                     "rag",
                     "web_search",
+                    "videogen",
+                    "render_video_lesson",
                 ];
                 if optional.contains(&call.name.as_str())
                     && let Some(names) = grant["enabled_tools"].as_array()
@@ -114,6 +125,25 @@ impl ToolRegistry {
             if !matches!(allowed, Ok(true)) {
                 return json!({"success":false,"error":"forbidden","content":"This tool is not assigned to your account."}).into();
             }
+        }
+        if (call.name == "render_video_lesson"
+            && flags.video_lesson
+            && matches!(
+                self.admission.capability,
+                Capability::Chat | Capability::VideoLesson
+            ))
+            || (call.name == "videogen"
+                && flags.videogen.is_some()
+                && self.admission.capability == Capability::Chat)
+        {
+            return crate::video::execute(
+                self.settings.clone(),
+                &self.admission,
+                invocation,
+                call,
+                flags,
+            )
+            .await;
         }
         if self.admission.capability.is_study()
             && matches!(

@@ -734,7 +734,7 @@ impl Store {
         )?;
         // Keep only compact terminal snapshots on the message. The complete
         // trace remains in turn_events and is replayed by cursor.
-        tx.execute("UPDATE messages SET events_json=(SELECT json_group_array(json_object('type',type,'source',source,'stage',stage,'content',content,'metadata',json(metadata_json),'seq',seq,'timestamp',timestamp,'turn_id',turn_id)) FROM (SELECT * FROM turn_events WHERE turn_id=? AND type IN ('result','done') ORDER BY seq)) WHERE id=?", params![admission.turn,assistant])?;
+        tx.execute("UPDATE messages SET events_json=(SELECT json_group_array(json_object('type',type,'source',source,'stage',stage,'content',content,'metadata',json(metadata_json),'seq',seq,'timestamp',timestamp,'turn_id',turn_id)) FROM (SELECT * FROM turn_events WHERE turn_id=? AND (type IN ('result','done') OR (type='tool_result' AND json_extract(metadata_json,'$.success')=1 AND json_extract(metadata_json,'$.tool_name') IN ('render_video_lesson','videogen'))) ORDER BY seq)) WHERE id=?", params![admission.turn,assistant])?;
         tx.execute("UPDATE turns SET status=?,error=?,failure_code=?,retryable=?,assistant_message_id=?,finished_at=?,updated_at=?,state_version=state_version+1 WHERE id=?",params![status,error.unwrap_or(""),if status=="failed" {"provider_error"} else {""},status=="failed",assistant,now(),now(),admission.turn])?;
         tx.execute(
             "UPDATE sessions SET updated_at=? WHERE id=?",
@@ -1003,7 +1003,7 @@ impl Store {
         // sessions with dependent learning records rather than orphan them.
         let children:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM sessions WHERE json_extract(preferences_json,'$.parent_session_id')=?)",[session],|r|r.get(0))?;
         let active:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM turns WHERE session_id=? AND status IN ('queued','running','waiting_input'))",[session],|r|r.get(0))?;
-        let advanced:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM messages m WHERE m.session_id=? AND COALESCE(m.capability,'') NOT IN ('','chat') AND NOT (m.capability IN ('ask_questions','deep_solve') AND EXISTS(SELECT 1 FROM turns t WHERE t.session_id=m.session_id AND t.capability=m.capability AND t.owner_id LIKE 'rust-server:%' AND (t.id=json_extract(CASE WHEN json_valid(m.metadata_json) THEN m.metadata_json ELSE '{}' END,'$.turn_id') OR t.assistant_message_id=m.id))))",[session],|r|r.get(0))?;
+        let advanced:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM messages m WHERE m.session_id=? AND COALESCE(m.capability,'') NOT IN ('','chat') AND NOT (m.capability IN ('ask_questions','deep_solve','video_lesson') AND EXISTS(SELECT 1 FROM turns t WHERE t.session_id=m.session_id AND t.capability=m.capability AND t.owner_id LIKE 'rust-server:%' AND (t.id=json_extract(CASE WHEN json_valid(m.metadata_json) THEN m.metadata_json ELSE '{}' END,'$.turn_id') OR t.assistant_message_id=m.id))))",[session],|r|r.get(0))?;
         if children || advanced {
             return Err(Error::unsupported(
                 "This conversation has learning data whose cleanup is not migrated. Archive it instead.",

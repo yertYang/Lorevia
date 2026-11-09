@@ -46,7 +46,7 @@ export default function VideoLessonViewer({
         className="aspect-video w-full rounded-xl border border-[var(--border)] bg-[#fdfcf9]"
       />
 
-      {result.durationSeconds || result.attempts > 1 ? (
+      {result.durationSeconds || result.attempts > 1 || result.captionsOnly ? (
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--muted-foreground)]">
           {result.durationSeconds ? (
             <span className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] px-2 py-0.5">
@@ -54,6 +54,7 @@ export default function VideoLessonViewer({
               {t("{{seconds}} s", { seconds: result.durationSeconds })}
             </span>
           ) : null}
+          {result.captionsOnly && <span>{t("Captions only")}</span>}
           {result.attempts > 1 ? (
             <span className="rounded-full border border-[var(--border)] px-2 py-0.5">
               {t("Fixed after {{count}} checks", { count: result.attempts })}

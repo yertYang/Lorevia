@@ -9,6 +9,11 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     cargo build --release --locked -p deeptutor-server \
     && cp target/release/yanzhizhou target/release/deeptutor target/release/deeptutor-server /usr/local/bin/
 
+FROM node:22.23.4-bookworm-slim AS lesson-builder
+WORKDIR /build/video-lesson
+COPY packages/video-lesson/ ./
+RUN npm ci --omit=dev --no-audit --no-fund
+
 FROM node:22.23.4-bookworm-slim AS web-builder
 WORKDIR /build/web
 COPY web/package.json web/package-lock.json ./
@@ -24,6 +29,8 @@ LABEL org.opencontainers.image.revision=$DEEPTUTOR_BUILD_REVISION
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
+COPY --from=lesson-builder /build/video-lesson /app/video-lesson
+ENV DEEPTUTOR_VIDEO_RUNTIME=/app/video-lesson
 COPY --from=native-builder /usr/local/bin/yanzhizhou /usr/local/bin/yanzhizhou
 COPY --from=native-builder /usr/local/bin/deeptutor /usr/local/bin/deeptutor
 COPY --from=native-builder /usr/local/bin/deeptutor-server /usr/local/bin/deeptutor-server

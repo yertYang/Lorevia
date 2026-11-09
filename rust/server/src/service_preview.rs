@@ -48,7 +48,10 @@ pub(crate) fn connection(
     service: &str,
 ) -> Result<Value> {
     let mut effective = config::effective_service_profile(catalog, profile, model, service)?;
-    if !matches!(text(&effective, "binding"), "openai" | "custom" | "vllm") {
+    let binding = text(&effective, "binding");
+    let native_video =
+        service == "videogen" && matches!(binding, "volcengine" | "dashscope" | "xai");
+    if !native_video && !matches!(binding, "openai" | "custom" | "vllm") {
         return Err(Error::unsupported(
             "Choose an OpenAI-compatible provider for this service.",
         ));
@@ -60,6 +63,13 @@ pub(crate) fn connection(
     }
     if text(&effective, "base_url").is_empty() && effective["binding"] == "openai" {
         effective["base_url"] = json!("https://api.openai.com/v1");
+    }
+    if native_video && text(&effective, "base_url").is_empty() {
+        effective["base_url"] = json!(match text(&effective, "binding") {
+            "xai" => "https://api.x.ai/v1",
+            "dashscope" => "https://dashscope.aliyuncs.com/api/v1",
+            _ => "https://ark.cn-beijing.volces.com/api/v3",
+        });
     }
     valid_url(text(&effective, "base_url"))?;
     effective["extra_headers"] = config::normalize_headers(effective["extra_headers"].clone())?;
@@ -80,7 +90,7 @@ fn valid_url(value: &str) -> Result<reqwest::Url> {
     }
     Ok(url)
 }
-fn endpoint(connection: &Value, suffix: &str) -> Result<reqwest::Url> {
+pub(crate) fn endpoint(connection: &Value, suffix: &str) -> Result<reqwest::Url> {
     let mut url = valid_url(text(connection, "base_url"))?;
     if url.query().is_some() {
         return Err(Error::invalid(
@@ -106,7 +116,7 @@ pub(crate) fn request(connection: &Value, suffix: &str) -> Result<reqwest::Reque
         connection,
     )
 }
-fn authorized(
+pub(crate) fn authorized(
     mut request: reqwest::RequestBuilder,
     connection: &Value,
 ) -> Result<reqwest::RequestBuilder> {
@@ -217,6 +227,16 @@ async fn generate(connection: &Value, model: &Value, service: &str, prompt: &str
         };
         return media("image", bytes);
     }
+    media(
+        "video",
+        crate::video::provider::generate(connection, model, prompt).await?,
+    )
+}
+pub(crate) async fn openai_video(
+    connection: &Value,
+    model: &Value,
+    prompt: &str,
+) -> Result<Vec<u8>> {
     // Video-compatible providers expose a multipart creation request and a
     // status/content pair. Poll only the selected provider's own job id.
     let boundary = format!("video-{}", uuid::Uuid::new_v4());
@@ -258,7 +278,7 @@ async fn generate(connection: &Value, model: &Value, service: &str, prompt: &str
         .send()
         .await
         .map_err(|_| Error::provider("Video provider connection failed."))?;
-    successful(&response)?;
+    successful(&response).map_err(|e| crate::video::stage(e, "video_submit"))?;
     let mut result = config::response_json(response, 1024 * 1024).await?;
     let id = text(&result, "id").to_owned();
     if id.is_empty()
@@ -276,8 +296,9 @@ async fn generate(connection: &Value, model: &Value, service: &str, prompt: &str
             text(&result, "status"),
             "queued" | "in_progress" | "pending" | "processing"
         ) {
-            return Err(Error::provider(
-                "Video generation did not complete successfully.",
+            return Err(crate::video::stage(
+                Error::provider("Video generation did not complete successfully."),
+                "video_poll",
             ));
         }
         tokio::time::sleep(Duration::from_secs(2)).await;
@@ -290,7 +311,7 @@ async fn generate(connection: &Value, model: &Value, service: &str, prompt: &str
         .send()
         .await
         .map_err(|_| Error::provider("Unable to check video generation status."))?;
-        successful(&response)?;
+        successful(&response).map_err(|e| crate::video::stage(e, "video_poll"))?;
         result = config::response_json(response, 1024 * 1024).await?;
     }
     let response = authorized(
@@ -302,8 +323,8 @@ async fn generate(connection: &Value, model: &Value, service: &str, prompt: &str
     .send()
     .await
     .map_err(|_| Error::provider("Unable to retrieve the generated video."))?;
-    successful(&response)?;
-    media("video", config::response_bytes(response, MAX_MEDIA).await?)
+    successful(&response).map_err(|e| crate::video::stage(e, "video_download"))?;
+    config::response_bytes(response, MAX_MEDIA).await
 }
 async fn download(url: &str) -> Result<Vec<u8>> {
     let url = valid_url(url)?;

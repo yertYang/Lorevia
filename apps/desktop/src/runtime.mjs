@@ -89,6 +89,7 @@ export class SourceRuntime extends EventEmitter {
         ...process.env,
         PATH: [path.dirname(config.nodePath), path.dirname(config.serverPath), process.env.PATH].filter(Boolean).join(path.delimiter),
         DEEPTUTOR_HOME: config.runtimeHome,
+        DEEPTUTOR_VIDEO_RUNTIME: path.join(config.sourcePath, config.mode === 'bundled' ? 'video-lesson' : 'packages/video-lesson'),
         DEEPTUTOR_BROWSER_NODE: config.nodePath,
         DEEPTUTOR_BROWSER_WORKER: path.join(config.sourcePath, config.mode === 'bundled' ? 'browser-testing' : 'packages/browser-testing', 'worker.mjs'),
         ...(config.mode === 'bundled' ? { PLAYWRIGHT_BROWSERS_PATH: path.join(config.sourcePath, 'browser-testing/browsers') } : {}),

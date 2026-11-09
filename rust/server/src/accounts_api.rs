@@ -551,7 +551,7 @@ async fn resources(State(app): State<App>) -> Result<Json<Value>> {
     Ok(Json(blocking(move||{
         let catalog=app.settings.catalog()?;
         let models=catalog["services"]["llm"]["profiles"].as_array().into_iter().flatten().map(|p|json!({"profile_id":p["id"],"name":p["name"],"models":p["models"].as_array().into_iter().flatten().map(|m|json!({"model_id":m["id"],"name":m["name"],"model":m["model"]})).collect::<Vec<_>>()})).collect::<Vec<_>>();
-        Ok(json!({"models":{"llm":models},"knowledge_bases":[],"skills":[],"partners":[],"reading_materials":[],"reading_extensions":[],"tools":[{"name":"list_favorites"},{"name":"save_favorite"},{"name":"read_memory"},{"name":"write_memory"},{"name":"rag"}],"mcp_tools":[],"native":true}))
+        Ok(json!({"models":{"llm":models},"knowledge_bases":[],"skills":[],"partners":[],"reading_materials":[],"reading_extensions":[],"tools":[{"name":"list_favorites"},{"name":"save_favorite"},{"name":"read_memory"},{"name":"write_memory"},{"name":"rag"},{"name":"videogen"},{"name":"render_video_lesson"}],"mcp_tools":[],"native":true}))
     }).await?))
 }
 async fn grants(State(app): State<App>, Path(id): Path<String>) -> Result<Json<Value>> {
@@ -579,7 +579,7 @@ async fn save_grants(
         if body["user_id"]!=id || body["version"]!=2 || !body["models"]["llm"].is_array(){return Err(Error::invalid("Invalid account grant."));}
         for key in ["knowledge_bases","skills","partners","mcp_tools"]{if body[key].as_array().is_some_and(|v|!v.is_empty()){return Err(Error::unsupported("Sharing this resource has not been migrated. Account data remains private."));}}
         if body["exec_enabled"]==true {return Err(Error::invalid("Host execution is disabled for ordinary accounts."));}
-        if !body["enabled_tools"].is_null() && body["enabled_tools"].as_array().is_none_or(|a|a.iter().any(|v| !["list_favorites","save_favorite","read_memory","write_memory","rag"].iter().any(|n|v==n))) {return Err(Error::invalid("Invalid tool assignment."));}
+        if !body["enabled_tools"].is_null() && body["enabled_tools"].as_array().is_none_or(|a|a.iter().any(|v| !["list_favorites","save_favorite","read_memory","write_memory","rag","videogen","render_video_lesson"].iter().any(|n|v==n))) {return Err(Error::invalid("Invalid tool assignment."));}
         let catalog=app.settings.catalog()?;
         for grant in body["models"]["llm"].as_array().unwrap(){
             let profile=catalog["services"]["llm"]["profiles"].as_array().into_iter().flatten().find(|p|p["id"]==grant["profile_id"]).ok_or_else(||Error::invalid("Unknown model profile."))?;

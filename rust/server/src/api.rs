@@ -33,6 +33,7 @@ pub(crate) fn workspace_router(app: App) -> Router {
         .merge(crate::update_api::router())
         .merge(crate::settings_api::router())
         .merge(crate::learning_api::router())
+        .merge(crate::video::router())
         .merge(crate::knowledge_api::router())
         .merge(crate::reading_api::router())
         .merge(crate::calendar_api::router())
@@ -210,7 +211,7 @@ async fn native_status(State(app): State<App>) -> Json<Value> {
         "capabilities":Capability::ALL.map(Capability::id),
         "tools":["session_info","ask_user","solve_plan","solve_finish_step","solve_replan"],
         "capability_tools":capability_tools,
-        "context_tools":{"notebooks":["list_favorites","save_favorite"],"memory":["read_memory","write_memory"],"selected_knowledge_bases":["rag"],"optional":["web_search","browser_test"]},
+        "context_tools":{"notebooks":["list_favorites","save_favorite"],"memory":["read_memory","write_memory"],"selected_knowledge_bases":["rag"],"optional":["web_search","browser_test","videogen"]},
         "browser_testing":{"declarative_cases":true,"screenshots":true,"playwright_export":true,"isolated_contexts":true,"interactive_sessions":true,"user_provided_urls":true,"file_inputs":true,"xlsx_results":true,"preserves_originals":true},
         "realtime_voice":{"provider":"personaplex","external_service_required":true,"languages":["en"],"audio_storage":false,"automatic_tools":false},
         "learning_features":{"authored_documents":true,"document_versions":true,"document_block_editor":true,"document_ai":true,"favorites_crud":true,"model_summary":true,"memory_documents":true,"memory_versions":true,"legacy_learning_import":true,"native_lexical_knowledge":true,"knowledge_binary_parsers":true,"knowledge_source_clips":true,"knowledge_ocr":crate::ocr::available(),"memory_consolidation":true,"memory_provenance_graph":true,"memory_cleanup_proposals":true},

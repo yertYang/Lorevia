@@ -8,7 +8,7 @@ const files = new Set(['Cargo.toml', 'Cargo.lock', 'VERSION', 'LICENSE', 'THIRD_
 export function includeSource(relative) {
   const parts = relative.replaceAll('\\', '/').split('/');
   if (parts.some(part => !part || part === '.' || part === '..' || part.startsWith('.env') || ['node_modules', 'target', '__pycache__', '.next', '.local'].includes(part) || part.startsWith('.next-'))) return false;
-  return parts.length === 1 ? files.has(parts[0]) : roots.has(parts[0]) || relative.replaceAll('\\', '/').startsWith('packages/browser-testing/');
+  return parts.length === 1 ? files.has(parts[0]) : roots.has(parts[0]) || (parts[0] === 'packages' && ['browser-testing', 'video-lesson'].includes(parts[1]));
 }
 
 /** Explicit local-development mode; never copies data/, credentials or builds. */
