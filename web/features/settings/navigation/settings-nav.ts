@@ -2,7 +2,6 @@
 
 import {
   AudioLines,
-  Bot,
   Boxes,
   Brain,
   BrainCircuit,
@@ -19,7 +18,6 @@ import {
   Mic,
   Network,
   Palette,
-  Paperclip,
   Search,
   ShieldCheck,
   SlidersHorizontal,
@@ -30,18 +28,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import {
-  ClaudeGlyph,
-  CodexGlyph,
-  DeepSeekGlyph,
-  GeminiGlyph,
-  GrokGlyph,
-  HermesGlyph,
-  KimiGlyph,
-  MimoGlyph,
-  OpenClawGlyph,
-  OpencodeGlyph,
-} from "@/components/agents/agent-icons";
 import type { ServiceName } from "@/features/settings/store/SettingsStore";
 import type { SettingsAccess } from "@/features/settings/navigation/settings-access";
 
@@ -288,155 +274,6 @@ const CHAT_CHILDREN: SettingsLeaf[] = [
     icon: Sparkles,
     tile: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
   },
-  {
-    key: "attachments",
-    href: "/settings#attachments",
-    label: { zh: "附件", en: "Attachments" },
-    blurb: {
-      zh: "聊天附件的大小上限与文本提取预算。",
-      en: "Upload caps and extraction budgets for chat attachments.",
-    },
-    icon: Paperclip,
-    tile: "bg-teal-500/10 text-teal-600 dark:text-teal-400",
-    adminOnly: true,
-  },
-];
-
-const AGENT_CHILDREN: SettingsLeaf[] = [
-  {
-    key: "agent-claude-code",
-    href: "/settings#agent-claude-code",
-    label: { zh: "Claude Code", en: "Claude Code" },
-    blurb: {
-      zh: "Lorevia 调用本机 Claude Code 时的模型、推理强度与运行参数。",
-      en: "Model, reasoning effort, and run params for the local Claude Code.",
-    },
-    // Brand glyph shares the lucide call signature (size/className).
-    icon: ClaudeGlyph as unknown as LucideIcon,
-    tile: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
-    adminOnly: true,
-  },
-  {
-    key: "agent-codex",
-    href: "/settings#agent-codex",
-    label: { zh: "Codex", en: "Codex" },
-    blurb: {
-      zh: "Lorevia 调用本机 Codex 时的模型、推理强度与运行参数。",
-      en: "Model, reasoning effort, and run params for the local Codex.",
-    },
-    icon: CodexGlyph as unknown as LucideIcon,
-    tile: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-    adminOnly: true,
-  },
-  {
-    key: "agent-grok",
-    href: "/settings#agent-grok",
-    label: { zh: "Grok CLI", en: "Grok CLI" },
-    blurb: {
-      zh: "Lorevia 调用本机 Grok CLI 时的模型、推理强度与权限模式。",
-      en: "Model, reasoning effort, and permission mode for the local Grok CLI.",
-    },
-    icon: GrokGlyph as unknown as LucideIcon,
-    tile: "bg-zinc-500/10 text-zinc-700 dark:text-zinc-300",
-    adminOnly: true,
-  },
-  {
-    // Gemini CLI's supported replacement.
-    key: "agent-antigravity",
-    href: "/settings#agent-antigravity",
-    label: { zh: "Antigravity CLI", en: "Antigravity CLI" },
-    blurb: {
-      zh: "Lorevia 调用本机 Antigravity CLI 时的模型与运行参数。",
-      en: "Model and run params for the local Antigravity CLI.",
-    },
-    icon: GeminiGlyph as unknown as LucideIcon,
-    tile: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
-    adminOnly: true,
-  },
-  {
-    key: "agent-kimi",
-    href: "/settings#agent-kimi",
-    label: { zh: "Kimi CLI", en: "Kimi CLI" },
-    blurb: {
-      zh: "Lorevia 调用本机 Kimi CLI 时的模型与运行参数。",
-      en: "Model and run params for the local Kimi CLI.",
-    },
-    icon: KimiGlyph as unknown as LucideIcon,
-    tile: "bg-zinc-500/10 text-zinc-700 dark:text-zinc-300",
-    adminOnly: true,
-  },
-  {
-    key: "agent-opencode",
-    href: "/settings#agent-opencode",
-    label: { zh: "opencode", en: "opencode" },
-    blurb: {
-      zh: "Lorevia 调用本机 opencode 时的模型、推理强度与运行参数。",
-      en: "Model, reasoning effort, and run params for the local opencode.",
-    },
-    icon: OpencodeGlyph as unknown as LucideIcon,
-    tile: "bg-neutral-500/10 text-neutral-700 dark:text-neutral-300",
-    adminOnly: true,
-  },
-  {
-    key: "agent-mimo",
-    href: "/settings#agent-mimo",
-    label: { zh: "MiMo Code", en: "MiMo Code" },
-    blurb: {
-      zh: "Lorevia 调用本机 MiMo Code 时的模型、推理强度与运行参数。",
-      en: "Model, reasoning effort, and run params for the local MiMo Code.",
-    },
-    icon: MimoGlyph as unknown as LucideIcon,
-    tile: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
-    adminOnly: true,
-  },
-  {
-    key: "agent-hermes",
-    href: "/settings#agent-hermes",
-    label: { zh: "Hermes Agent", en: "Hermes Agent" },
-    blurb: {
-      zh: "Lorevia 调用本机 Hermes Agent 时的模型、推理强度与运行参数。",
-      en: "Model, reasoning effort, and run params for the local Hermes Agent.",
-    },
-    icon: HermesGlyph as unknown as LucideIcon,
-    tile: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
-    adminOnly: true,
-  },
-  {
-    key: "agent-hermes-remote",
-    href: "/settings#agent-hermes-remote",
-    label: { zh: "Hermes Agent（远程）", en: "Hermes Agent (remote)" },
-    blurb: {
-      zh: "通过 HTTP 网关调用远程 Hermes Agent，并按会话保持上下文。",
-      en: "Call a remote Hermes Agent over HTTP with per-chat session continuity.",
-    },
-    icon: HermesGlyph as unknown as LucideIcon,
-    tile: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
-    adminOnly: true,
-  },
-  {
-    key: "agent-openclaw",
-    href: "/settings#agent-openclaw",
-    label: { zh: "OpenClaw", en: "OpenClaw" },
-    blurb: {
-      zh: "Lorevia 通过 Gateway 或本地模式调用 OpenClaw 的运行参数。",
-      en: "Gateway or local-mode run params for the local OpenClaw agent.",
-    },
-    icon: OpenClawGlyph as unknown as LucideIcon,
-    tile: "bg-red-500/10 text-red-600 dark:text-red-400",
-    adminOnly: true,
-  },
-  {
-    key: "agent-deepseek-harness",
-    href: "/settings#agent-deepseek-harness",
-    label: { zh: "DeepSeek Harness", en: "DeepSeek Harness" },
-    blurb: {
-      zh: "DeepSeek Harness 连接器设置。",
-      en: "DeepSeek Harness connector settings.",
-    },
-    icon: DeepSeekGlyph as unknown as LucideIcon,
-    tile: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
-    adminOnly: true,
-  },
 ];
 
 export const SETTINGS_CATEGORIES: SettingsCategory[] = [
@@ -489,23 +326,12 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
     key: "chat",
     label: { zh: "聊天", en: "Chat" },
     blurb: {
-      zh: "工具、能力与附件",
-      en: "Tools, capabilities, and attachments",
+      zh: "工具与能力",
+      en: "Tools and capabilities",
     },
     icon: MessagesSquare,
     href: "/settings#chat",
     children: CHAT_CHILDREN,
-  },
-  {
-    key: "agents",
-    label: { zh: "伙伴和智能体", en: "Partners & Agents" },
-    blurb: {
-      zh: "配置可在对话中调用的子智能体",
-      en: "Configure the subagents you can call on in chat",
-    },
-    icon: Bot,
-    href: "/settings#agents",
-    children: AGENT_CHILDREN,
   },
   {
     key: "progress",
@@ -569,7 +395,7 @@ export const SETTINGS_ALIASES: Record<string, string> = {
   overview: "general",
   models: "llm",
   chat: "starters",
-  agents: "agent-claude-code",
+  agents: "general",
   "document-parsing": "knowledge",
   image: "multimodal",
   video: "multimodal",
@@ -623,15 +449,7 @@ const STORAGE_PATHS: Record<string, string> = {
   imagegen: "data/user/settings/model_catalog.json",
   videogen: "data/user/settings/model_catalog.json",
   tools: "data/user/settings/interface.json",
-  attachments: "data/user/settings/system.json",
   capabilities: "data/user/settings/main.yaml · agents.yaml",
-  "agent-claude-code": "data/user/settings/subagent.json",
-  "agent-codex": "data/user/settings/subagent.json",
-  "agent-grok": "data/user/settings/subagent.json",
-  "agent-antigravity": "data/user/settings/subagent.json",
-  "agent-kimi": "data/user/settings/subagent.json",
-  "agent-opencode": "data/user/settings/subagent.json",
-  "agent-mimo": "data/user/settings/subagent.json",
 };
 
 export function storagePathFor(
@@ -643,6 +461,5 @@ export function storagePathFor(
   }
   const key = resolveSettingsKey(pathname.replace(/^\/settings[\/#]?/, ""));
   if (key === "general") return "data/user/settings/interface.json";
-  if (key.startsWith("agent-")) return "data/user/settings/subagent.json";
   return STORAGE_PATHS[key] ?? STORAGE_PATHS[pathname] ?? null;
 }

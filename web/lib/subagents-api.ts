@@ -1,7 +1,4 @@
 import { apiFetch, apiUrl } from "@/lib/api";
-import { invalidateClientCache, withClientCache } from "@/lib/client-cache";
-
-const SUBAGENT_SETTINGS_CACHE_KEY = "subagents:settings";
 
 /** One agent CLI backend's installability on this machine. */
 export interface SubagentBackendInfo {
@@ -68,81 +65,6 @@ export async function disconnectSubagent(name: string): Promise<void> {
   if (!res.ok) throw new Error(`Disconnect failed: ${res.status}`);
 }
 
-export interface SubagentModelOption {
-  slug: string;
-  display_name: string;
-  default_effort: string;
-  efforts: string[];
-}
-
-export interface SubagentBackendOptions {
-  kind: string;
-  display_name: string;
-  available: boolean;
-  version: string;
-  default_model: string;
-  models: SubagentModelOption[];
-  efforts: string[];
-  allow_custom_model: boolean;
-  synced_at: string;
-  detail: string;
-}
-
-export async function getBackendOptions(): Promise<SubagentBackendOptions[]> {
-  const res = await apiFetch(apiUrl("/api/subagents/backends/options"), {
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-  const data = (await res.json()) as { backends: SubagentBackendOptions[] };
-  return data.backends ?? [];
-}
-
-/**
- * Re-pull one backend's model catalog (the settings "sync" button). For Claude
- * Code this scrapes its `/model` TUI live (can take a few seconds); for Codex it
- * re-reads the CLI's cache.
- */
-export async function syncBackendOptions(
-  kind: string,
-): Promise<SubagentBackendOptions> {
-  const res = await apiFetch(
-    apiUrl(`/api/subagents/backends/${encodeURIComponent(kind)}/sync`),
-    { method: "POST" },
-  );
-  if (!res.ok) throw new Error(`Sync failed: ${res.status}`);
-  return (await res.json()) as SubagentBackendOptions;
-}
-
-export interface SubagentBackendConfig {
-  enabled?: boolean;
-  model?: string;
-  effort?: string;
-  system_prompt?: string;
-  permission_mode?: string;
-  sandbox?: string;
-  approval?: string;
-  network_access?: boolean;
-  ephemeral?: boolean;
-  /** Kimi / opencode / MiMo: answer permission asks affirmatively. */
-  auto_approve?: boolean;
-  /** Kimi: stream the model's thinking (--thinking / --no-thinking). */
-  thinking?: boolean;
-  forward_images?: boolean;
-  extra_args?: string[];
-  /** Remote Hermes gateway URL; the API key itself is never persisted here. */
-  base_url?: string;
-  /** Environment variable name containing the remote gateway bearer. */
-  api_key_env?: string;
-  /** Informational profile name associated with the gateway deployment. */
-  profile?: string;
-  idle_timeout_seconds?: number;
-}
-
-export interface SubagentSettings {
-  consult_budget: number;
-  backends: Record<string, SubagentBackendConfig>;
-}
-
 /** One streamed line from the "message the agent directly" endpoint. */
 export interface SubagentStreamLine {
   channel?: string;
@@ -192,39 +114,4 @@ export async function* streamSubagentMessage(
   }
   const tail = buf.trim();
   if (tail) yield JSON.parse(tail) as SubagentStreamLine;
-}
-
-/** Read the subagent settings (backends + consult budget).
- *
- *  Cached because the chat page only needs the default consult budget, and
- *  re-reading it on every session switch is pure overhead. Writes through
- *  ``updateSubagentSettings`` drop the cache; pass ``force`` for editors that
- *  must show the stored values. */
-export async function getSubagentSettings(options?: {
-  force?: boolean;
-}): Promise<SubagentSettings> {
-  return withClientCache<SubagentSettings>(
-    SUBAGENT_SETTINGS_CACHE_KEY,
-    async () => {
-      const res = await apiFetch(apiUrl("/api/subagents/settings"), {
-        cache: "no-store",
-      });
-      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-      return (await res.json()) as SubagentSettings;
-    },
-    { force: options?.force },
-  );
-}
-
-export async function updateSubagentSettings(
-  payload: Partial<SubagentSettings>,
-): Promise<SubagentSettings> {
-  const res = await apiFetch(apiUrl("/api/subagents/settings"), {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error(`Update failed: ${res.status}`);
-  invalidateClientCache(SUBAGENT_SETTINGS_CACHE_KEY);
-  return (await res.json()) as SubagentSettings;
 }

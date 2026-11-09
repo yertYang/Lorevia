@@ -1,4 +1,4 @@
-import { Activity, Archive, BarChart3, Bot, Settings2 } from 'lucide-react'
+import { Activity, Archive, BarChart3, Settings2 } from 'lucide-react'
 import {
   SETTINGS_CATEGORIES,
   isSettingsCategoryVisible,
@@ -18,11 +18,11 @@ export const SETTINGS_PAGE_GROUPS: { label: Lang; keys: string[] }[] = [
   },
   {
     label: { en: 'Learning & conversation', zh: '学习与对话' },
-    keys: ['starters', 'attachments', 'video-learning', 'learner-profile', 'progress', 'guardian', 'memory'],
+    keys: ['starters', 'video-learning', 'learner-profile', 'progress', 'guardian', 'memory'],
   },
   {
     label: { en: 'Features & integrations', zh: '功能与集成' },
-    keys: ['tools', 'capabilities', 'agent-claude-code', 'knowledge'],
+    keys: ['tools', 'capabilities', 'knowledge'],
   },
   {
     label: { en: 'System', zh: '系统' },
@@ -50,10 +50,8 @@ export function isWideSettingsPage(key: string): boolean {
   return WIDE_SETTINGS_PAGES.has(resolveSettingsKey(key))
 }
 
-/** Related service pages share a compact navigation row, with explicit tabs. */
-export const SETTINGS_PAGE_FAMILIES: string[][] = [
-  SETTINGS_CATEGORIES.find(category => category.key === 'agents')!.children!.map(leaf => leaf.key),
-]
+/** Preserve the navigation API for standalone settings pages. */
+export const SETTINGS_PAGE_FAMILIES: string[][] = []
 
 export function settingsPageFamily(key: string): string[] {
   return SETTINGS_PAGE_FAMILIES.find(family => family.includes(key)) ?? [key]
@@ -132,25 +130,14 @@ export function visibleSettingsPages(access: SettingsAccess): SettingsLeaf[] {
 
 export function settingsPageLabel(key: string, fallback: Lang): Lang {
   if (key === 'llm') return { en: 'Language models', zh: '语言模型' }
-  if (key === 'agent-claude-code') return { en: 'Partners & agents', zh: '伙伴与智能体' }
   if (key === 'starters') return { en: 'Conversation', zh: '对话' }
   if (key === 'connections') return { en: 'Providers', zh: '提供方' }
   if (key === 'knowledge') return { en: 'Knowledge & documents', zh: '知识与文档' }
   return fallback
 }
 
-/**
- * Icon for a page as the navigation shows it.
- *
- * The counterpart to ``settingsPageLabel``: where a row stands for a whole
- * family it is titled for the family, so it cannot also wear one member's
- * brand mark. "Partners & agents" carried Claude Code's orange glyph — the one
- * saturated mark in a column of neutral line icons, and wrong about the page,
- * which configures every partner. Search results address the leaf itself and
- * keep the vendor glyph, matching the label they show.
- */
+/** Icon for a page as the navigation shows it. */
 export function settingsPageIcon(key: string, fallback: LucideIcon): LucideIcon {
-  if (key === 'agent-claude-code') return Bot
   return fallback
 }
 

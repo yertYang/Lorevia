@@ -23,7 +23,6 @@ export const EXTENSION_ENDPOINTS = {
   mineru: "/api/settings/mineru",
   "update-checks": "/api/system/update/settings",
   "chat-starters": "/api/settings/chat-starters",
-  "chat-attachments": "/api/settings/chat-attachments",
   "chat-timeout": "/api/settings/chat-response-timeout",
   capabilities: "/api/capabilities/settings",
   memory: "/api/memory/settings",
@@ -54,11 +53,6 @@ export async function applyExtensionPayload(
     const { isUiLayout, writeStoredUiLayout } = await import("@/lib/ui-layout");
     if (!isUiLayout(payload)) throw new Error(`Invalid UI layout: ${String(payload)}`);
     writeStoredUiLayout(payload);
-    return;
-  }
-  if (key.startsWith("subagent:")) {
-    const { updateSubagentSettings } = await import("@/lib/subagents-api");
-    await updateSubagentSettings({ backends: { [key.slice(9)]: payload } });
     return;
   }
   const guardian = /^guardian:(materials|restrictions):(.+)$/.exec(key);

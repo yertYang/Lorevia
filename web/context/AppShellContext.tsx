@@ -122,7 +122,7 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
       const owner = recoveryPrincipal();
       if (!owner) return;
       try {
-        const response = await apiFetch(apiUrl("/api/settings/display"), {
+        const response = await apiFetch(apiUrl("/api/settings/ui"), {
           skipAuthRedirect: true,
         });
         if (!response.ok) return;

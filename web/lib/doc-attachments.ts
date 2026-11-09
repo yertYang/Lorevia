@@ -193,12 +193,7 @@ export const SUPPORTED_DOC_MIMES = new Set<string>([
   "application/toml",
 ]);
 
-/**
- * Built-in attachment caps. These are compile-time fallbacks only — the
- * effective limits come from the backend policy (see
- * `lib/attachment-limits.ts` / the /settings#attachments page) and must match
- * the backend defaults in `deeptutor/services/config/runtime_settings.py`.
- */
+/** Client-side chat attachment caps used while no native policy endpoint exists. */
 export const DEFAULT_MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 export const DEFAULT_MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 

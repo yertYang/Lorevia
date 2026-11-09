@@ -24,7 +24,6 @@ import {
 } from "./ComposerTrayMenu";
 import AnswerModeMenu, { PartnerLinkMenu, type AnswerModeProps, type PartnerLinkProps } from "./AnswerModeMenu";
 import { ConnectorHubIcon, SkillDeckIcon, modeIcon } from "./ComposerIcons";
-import type { ComposerControls } from "@/lib/page-customization";
 import { useTrayFold } from "./ComposerTrayFold";
 import { CREATE_KINDS, CREATION_KIND_ORDER, type CreationKind } from "@/lib/creations";
 
@@ -128,7 +127,6 @@ export interface TrayCreate {
  * drag or a click, until only that edge shows.
  */
 export function ComposerTray({
-  controls,
   placement,
   mode,
   resources,
@@ -139,7 +137,6 @@ export function ComposerTray({
 }: {
   /** Lists open toward the page's free space: below on the home screen, above in a conversation. */
   placement: TrayPlacement;
-  controls?: ComposerControls;
   mode?: TrayMode;
   resources?: TrayResources;
   create?: TrayCreate;
@@ -178,11 +175,11 @@ export function ComposerTray({
       </Tooltip>
       <div id={rowId} className="dt-tray-bar" inert={fold.away}>
         {mode && <ModeMenu {...mode} placement={placement} />}
-        {resources && controls?.skills !== false && <SkillsMenu {...resources} placement={placement} />}
-        {resources && controls?.mcp !== false && <ConnectorsMenu {...resources} placement={placement} />}
-        {create && controls?.create !== false && <CreateMenu {...create} placement={placement} />}
-        {partners && controls?.partners !== false && <PartnerLinkMenu {...partners} placement={placement} />}
-        {answer && controls?.preferences !== false && <AnswerModeMenu {...answer} placement={placement} />}
+        {resources && <SkillsMenu {...resources} placement={placement} />}
+        {resources && <ConnectorsMenu {...resources} placement={placement} />}
+        {create && <CreateMenu {...create} placement={placement} />}
+        {partners && <PartnerLinkMenu {...partners} placement={placement} />}
+        {answer && <AnswerModeMenu {...answer} placement={placement} />}
         {end}
       </div>
     </m.div>

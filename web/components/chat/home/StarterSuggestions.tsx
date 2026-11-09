@@ -16,7 +16,6 @@ import {
 import { useOutsideClick } from "@/hooks/use-outside-click";
 import { CornerDownLeft, Loader2, RefreshCw } from "lucide-react";
 import { activeWorkspaceId, scopedUrl } from "@/lib/workspace-scope";
-import { usePageCustomization } from "@/context/PageCustomizationContext";
 import { starterPrompts, type StarterGroup } from "@/lib/page-customization";
 import { apiFetch, apiUrl } from "@/lib/api";
 
@@ -101,7 +100,6 @@ export default function StarterSuggestions({
   workspaceId?: string;
 }) {
   const { t } = useTranslation();
-  const { value: { chat } } = usePageCustomization();
   const [view, setView] = useState<View>({ kind: "loading" });
   const [open, setOpen] = useState<string | null>(null);
   const panelId = useId();
@@ -269,7 +267,7 @@ export default function StarterSuggestions({
       </>
     );
   }
-  const guides = GUIDES.filter(entry => starterPrompts(chat, entry.id, t).length > 0);
+  const guides = GUIDES;
   const guide = guides.find((entry) => entry.id === open);
 
   return (
@@ -314,7 +312,7 @@ export default function StarterSuggestions({
             {/* Keyed so switching ways swaps the rows in place: the card stays,
                 only its content changes. */}
             <div key={guide.id} className="dt-starter-card-body">
-              {starterPrompts(chat, guide.id, t).map(({ label, prompt }, n) => {
+              {starterPrompts(guide.id, t).map(({ label, prompt }, n) => {
                 return (
                   // The whole request shows on hover: what the box will hold.
                   <Tooltip key={n} label={prompt} side="top" as="div" className="dt-starter-item" delay={500}>

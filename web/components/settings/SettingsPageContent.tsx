@@ -139,17 +139,6 @@ const Starters = dynamic(
     loading,
   },
 );
-const Attachments = dynamic(
-  () => import("@/features/settings/sections/AttachmentsSettingsSection"),
-  { loading },
-);
-const Agent = dynamic(
-  () =>
-    import("./SubagentSettingsEditor").then(
-      (module) => module.SubagentSettingsEditor,
-    ),
-  { loading },
-);
 
 const Archive = dynamic(
   () => import("@/features/settings/sections/ArchivedChatsSettingsSection"),
@@ -197,21 +186,7 @@ const PAGES: Record<string, React.ComponentType> = {
   tools: Tools,
   capabilities: Capabilities,
   starters: Starters,
-  attachments: Attachments,
 };
-const AGENTS = {
-  "agent-claude-code": "claude_code",
-  "agent-codex": "codex",
-  "agent-grok": "grok",
-  "agent-antigravity": "antigravity",
-  "agent-kimi": "kimi",
-  "agent-opencode": "opencode",
-  "agent-mimo": "mimo",
-  "agent-hermes": "hermes",
-  "agent-hermes-remote": "hermes_remote",
-  "agent-openclaw": "openclaw",
-  "agent-deepseek-harness": "deepseek_harness",
-} as const;
 
 export default function SettingsPageContent({ section }: { section: string }) {
   const { t, i18n } = useTranslation();
@@ -245,7 +220,6 @@ export default function SettingsPageContent({ section }: { section: string }) {
       </div>
     );
   const Component = PAGES[key];
-  const kind = AGENTS[key as keyof typeof AGENTS];
   return (
     <fieldset disabled={saving || applying} aria-busy={saving || applying} className="min-w-0" data-settings-page={key}>
       {family.length > 1 && (
@@ -268,8 +242,6 @@ export default function SettingsPageContent({ section }: { section: string }) {
       )}
       {Component ? (
         <Component key={key} />
-      ) : kind ? (
-        <Agent key={key} kind={kind} />
       ) : null}
     </fieldset>
   );

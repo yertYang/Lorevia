@@ -6,8 +6,6 @@ import { m, useReducedMotion } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
 import { useAuthStatus } from '@/hooks/useAuthStatus'
 import { useModules } from '@/hooks/useModules'
-import { usePageCustomization } from '@/context/PageCustomizationContext'
-import { PageCustomizeButton } from '@/components/customization/PageCustomizeButton'
 import { navigateTask } from '@/lib/workspace-scope'
 import { LEARNING_SURFACES } from './surfaces'
 import {
@@ -23,8 +21,7 @@ export default function NewLearningPage() {
   const reduced = useReducedMotion()
   const auth = useAuthStatus()
   const inventory = useModules()
-  const preferences = usePageCustomization()
-  const eligible = LEARNING_SURFACES.filter(
+  const surfaces = LEARNING_SURFACES.filter(
     item =>
       inventory.available(item.href) &&
       (!auth.learningPolicy ||
@@ -32,29 +29,20 @@ export default function NewLearningPage() {
           item.kind === 'mastery' || item.kind === 'practice' ? 'chat' : item.kind
         ))
   )
-  const surfaces = eligible.filter(
-    item => !preferences.value.learning.hidden_features.includes(item.kind)
-  )
-  const learningKinds = eligible.map(item => item.kind)
-  const loading = auth.loading || preferences.loading || (!inventory.modules && !inventory.error)
+  const loading = auth.loading || (!inventory.modules && !inventory.error)
   return (
     <LearningShell
       title={t('navigation.createLearning')}
       subtitle={t('navigation.createLearningDescription')}
       icon={Plus}
       back={false}
-      action={<PageCustomizeButton page="learning" learningKinds={learningKinds} />}
     >
-      {(inventory.error || preferences.error) && (
+      {inventory.error ? (
         <LearningErrorState
-          message={t('customize.loadError')}
-          onRetry={() => {
-            inventory.reload()
-            preferences.reload()
-          }}
+          message={t('Could not load learning modules. Retry to continue.')}
+          onRetry={inventory.reload}
         />
-      )}
-      {loading ? (
+      ) : loading ? (
         <LearningSkeleton count={4} />
       ) : surfaces.length ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:gap-5">
@@ -92,18 +80,15 @@ export default function NewLearningPage() {
           ))}
         </div>
       ) : (
-        !inventory.error && (
           <LearningEmptyState
             icon={<Settings2 size={28} />}
-            title={t('customize.emptyLearning')}
-            description={t('customize.emptyLearningHint')}
-            action={<PageCustomizeButton page="learning" learningKinds={learningKinds} />}
+            title={t('No learning methods are available.')}
+            description={t('No learning modules are available. Check Settings → Runtime.')}
           />
-        )
       )}
-      {!loading && (
+      {!loading && !inventory.error && (
         <p className="mt-6 text-xs leading-relaxed text-muted-foreground">
-          {t('customize.learningFooter')}
+          {t('Only learning methods available in this environment are shown.')}
         </p>
       )}
     </LearningShell>

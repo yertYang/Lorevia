@@ -100,7 +100,6 @@ import { isQuoteAttachment, quoteText } from "@/lib/quote-attachments";
 import type { AttachmentProcessingItem } from "@/features/chat/selectors/attachment-processing";
 import Tooltip from "@/shared/ui/Tooltip";
 import { useCapabilityLabel } from "@/features/ui-layout/tokens";
-import { usePageCustomization } from "@/context/PageCustomizationContext";
 import { useUiLayout } from "@/hooks/useUiLayout";
 
 interface PendingAttachment {
@@ -254,7 +253,6 @@ export default memo(function ChatComposer({
   capabilityConfigConfirmed,
   onRequestConfigConfirm,
   capabilities: allCapabilities,
-  customizable = false,
   onSetCapMenuOpen,
   onSetSpaceMenuOpen,
   onToggleKB,
@@ -395,7 +393,6 @@ export default memo(function ChatComposer({
    */
   onRequestConfigConfirm: () => void;
   capabilities: CapabilityDef[];
-  customizable?: boolean;
   onSetCapMenuOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
   onSetSpaceMenuOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
   onToggleKB: (name: string) => void;
@@ -499,9 +496,7 @@ export default memo(function ChatComposer({
 }) {
   const { t } = useTranslation();
   const capabilityLabel = useCapabilityLabel();
-  const { value: pageCustomization } = usePageCustomization();
-  const controls = customizable ? pageCustomization.chat.controls : undefined;
-  const capabilities = customizable ? allCapabilities.filter(cap => !pageCustomization.chat.hidden_modes.includes(cap.value)) : allCapabilities;
+  const capabilities = allCapabilities;
   // The modern layout picks the mode in the tray and writes it at the start
   // of the message; the classic one keeps its chip in the toolbar.
   const modeInTray = useUiLayout() === "modern" && showCapabilityChip;
@@ -1589,7 +1584,7 @@ export default memo(function ChatComposer({
                 {contextBudget ? <ContextBudgetChip budget={contextBudget} /> : null}
 
                 <ComposerVoiceControl
-                  visible={controls?.voice !== false}
+                  visible
                   busy={isStreaming && !awaitingUserReply}
                   conversationKey={voiceConversation?.key}
                   reply={voiceConversation?.reply}
@@ -1660,7 +1655,6 @@ export default memo(function ChatComposer({
         </div>
         {trayMode || (resourceCatalog && resourceSelection && onResourceSelectionChange) || trayCreate || answerMode || partnerLinks || trayEnd ? (
           <ComposerTray
-            controls={controls}
             placement={hasMessages || docked ? "up" : "down"}
             mode={trayMode}
             resources={

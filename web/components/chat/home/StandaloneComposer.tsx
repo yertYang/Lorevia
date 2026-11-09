@@ -57,7 +57,6 @@ import {
 import { listLLMOptions, type LLMOption } from "@/lib/llm-options";
 import type { SelectedRecord } from "@/lib/notebook-selection-types";
 import type { SpaceMemoryFile } from "@/lib/space-items";
-import { getSubagentSettings } from "@/lib/subagents-api";
 import type { LLMSelection } from "@/features/chat/model/protocol";
 import {
   DEFAULT_QUIZ_CONFIG,
@@ -627,24 +626,11 @@ function StandaloneComposerImpl({
     if (id) { setSelectedPartnerGroup(null); handleSelectAgent(null); }
   }, [handleSelectAgent]);
 
-  // Seeded from the configured default; the chip's stepper overrides it for
-  // the next turn. Null until the setting loads, which is also what "no agent
-  // selected" looks like — neither case has a budget to send.
+  // The chip's stepper overrides this per turn. A missing selection needs no budget.
   const [subagentBudget, setSubagentBudget] = useState<number | null>(null);
   const [selectedPartner, setSelectedPartner] = useState<string | null>(null);
   const [selectedPartnerGroup, setSelectedPartnerGroup] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    void getSubagentSettings()
-      .then((settings) => {
-        if (!cancelled) setSubagentBudget(settings.consult_budget);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const handleClearPersona = useCallback(() => setSelectedPersona(null), []);
   const handleToggleMemoryFile = useCallback((file: SpaceMemoryFile) => {

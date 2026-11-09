@@ -45,7 +45,6 @@ import {
   SESSION_LOAD_TIMEOUT_MS,
   shouldSurfaceLoadFailure,
 } from "@/lib/session-load";
-import { PageCustomizeButton } from "@/components/customization/PageCustomizeButton";
 import StarterSuggestions from "@/components/chat/home/StarterSuggestions";
 // Imported eagerly so the drawer shell is always mounted off-screen —
 // clicking a chip becomes a single CSS class flip, no chunk fetch + double
@@ -135,7 +134,6 @@ import {
   type OutlineItem,
 } from "@/lib/research-types";
 import { listKnowledgeBases } from "@/features/knowledge/api/catalog";
-import { getSubagentSettings } from "@/lib/subagents-api";
 import { useLLMOptions } from "@/hooks/useLLMOptions";
 import {
   getEnabledOptionalTools,
@@ -1969,11 +1967,6 @@ export default function ChatWorkspace() {
   // becoming a session, and never follows them to another chat.
   const answerBy = state.answerBy;
 
-  useEffect(() => {
-    void getSubagentSettings()
-      .then((settings) => setSubagentBudget(settings.consult_budget))
-      .catch(() => undefined);
-  }, []);
 
   // A finished turn taken back into the composer. What is sent next is a new
   // attempt at that turn — a sibling under the same parent, so the earlier
@@ -2680,7 +2673,6 @@ export default function ChatWorkspace() {
                 ) : null}
               </PageBarSlot>
               <PageBarSlot name="actions" className="flex shrink-0 items-center gap-0.5">
-                <PageCustomizeButton page="chat" capabilities={visibleCapabilities} compact />
                 <HeaderActionButton
                   onClick={() => viewerPanelRef.current?.openMarkdownNoteTab()}
                   icon={NotebookPen}
@@ -2897,7 +2889,6 @@ export default function ChatWorkspace() {
                 </div>
               ) : null}
               <ChatComposer
-                customizable
                 composerRef={composerRef}
                 capMenuRef={capMenuRef}
                 capBtnRef={capBtnRef}

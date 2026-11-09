@@ -1105,7 +1105,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       }
       void (async () => {
         try {
-          const response = await apiFetch(apiUrl("/api/settings/display"), {
+          const response = await apiFetch(apiUrl("/api/settings/ui"), {
             skipAuthRedirect: true,
           });
           if (!response.ok) return;
@@ -2048,7 +2048,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         if (!serverDisplayLoadedRef.current) {
           // A partial edit after a failed settings load must inherit the
           // omitted field from the server, never from a placeholder default.
-          const response = await apiFetch(apiUrl("/api/settings/display"));
+          const response = await apiFetch(apiUrl("/api/settings/ui"));
           if (!isCurrent()) return;
           display = normalizeLearningDisplay(await asJsonOrThrow(response));
           if (!isCurrent()) return;
