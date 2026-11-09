@@ -588,7 +588,7 @@ export default function ChatWorkspace() {
   const initialLoadRef = useRef(false);
   // Session-loading overlay: shown while navigating from chat-history →
   // session detail. Holds an AbortController so the user can cancel.
-  const [sessionLoading, setSessionLoading] = useState(false);
+  const [sessionLoading, setSessionLoading] = useState(() => Boolean(sessionIdParam && sessionIdParam !== state.sessionId));
   // A load that ended without a session: terminal, and retryable. Kept
   // separate from `sessionLoading` so the overlay can tell "still
   // arriving" apart from "never arrived".
@@ -2711,18 +2711,19 @@ export default function ChatWorkspace() {
                 />
               </PageBarSlot>
             </div>
-            <div className="flex w-full flex-1 min-h-0 flex-col">
-              {sessionLoading || sessionLoadFailed ? (
-                <div className="flex w-full flex-1 min-h-0 justify-center px-6">
-                  <div className="h-full w-full max-w-[960px]">
-                    <SessionLoadingView
-                      onCancel={cancelSessionLoad}
-                      failed={sessionLoadFailed}
-                      onRetry={retrySessionLoad}
-                    />
-                  </div>
+            {sessionLoading || sessionLoadFailed ? (
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <div className="mx-auto grid min-h-full w-full max-w-[960px]">
+                  <SessionLoadingView
+                    onCancel={cancelSessionLoad}
+                    failed={sessionLoadFailed}
+                    onRetry={retrySessionLoad}
+                  />
                 </div>
-              ) : !hasMessages ? (
+              </div>
+            ) : (
+            <div className="flex w-full flex-1 min-h-0 flex-col">
+              {!hasMessages ? (
                 // Clipped rather than pushed under the header when a short
                 // window leaves the greeting no room.
                 <div className="flex w-full flex-1 min-h-0 items-end justify-center overflow-hidden pb-14 animate-fade-in px-6">
@@ -3058,6 +3059,7 @@ export default function ChatWorkspace() {
                 }}
               />
             </div>
+            )}
             <NotebookRecordPicker
               open={showNotebookPicker}
               onClose={handleCloseNotebookPicker}
